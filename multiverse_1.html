@@ -1,0 +1,2346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Future Shield — Multiverse Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #F6F4EF;
+    --bg-soft:   #FFFFFF;
+    --bg-tile:   #FBFAF6;
+    --rule:      #E5E1D8;
+    --rule-soft: #EFECE4;
+    --text:      #1A1814;
+    --text-dim:  #565049;
+    --text-mute: #9A938A;
+    --mint:      #E8631A;
+    --mint-dim:  #FFE3CC;
+    --mint-glow: #F26B2B44;
+    --coral:     #C8294C;
+    --coral-dim: #FBE0E6;
+    --amber:     #A6740B;
+    --amber-dim: #FCEFCF;
+    --violet:    #5B4FCE;
+    --violet-dim:#E4E0FB;
+    --shadow:    0 1px 0 #1A18141A, 0 10px 24px #1A18141A;
+  }
+  html, body { background: var(--bg); margin: 0; padding: 0; color: var(--text); }
+  body {
+    font-family: 'JetBrains Mono','Cascadia Code', ui-monospace, Menlo, Consolas, monospace;
+    font-size: 13.5px; line-height: 1.55; -webkit-font-smoothing: antialiased;
+  }
+  .shell {
+    max-width: 1480px; margin: 28px auto; display: grid;
+    grid-template-columns: 320px 1fr; gap: 18px; padding: 0 20px;
+  }
+  body.inspector-open .shell {
+    max-width: 1880px;
+    padding-right: min(430px, calc(100vw - 40px));
+  }
+  .page {
+    padding: 24px 28px 18px;
+    background: var(--bg-soft); border: 1px solid var(--rule);
+    border-radius: 12px; box-shadow: var(--shadow);
+  }
+  .sidebar {
+    padding: 18px 18px 16px;
+    background: var(--bg-soft); border: 1px solid var(--rule);
+    border-radius: 12px; box-shadow: var(--shadow);
+    position: sticky; top: 18px; align-self: start;
+    max-height: calc(100vh - 36px); overflow-y: auto;
+  }
+  .sidebar h3 {
+    font-family: Inter, system-ui, sans-serif;
+    color: var(--text); font-size: 13px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin: 0 0 10px; display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar h3 .rule { color: var(--mint); }
+  .sidebar h4 {
+    font-family: Inter, system-ui, sans-serif;
+    color: var(--text); font-size: 13px; font-weight: 700;
+    letter-spacing: 0.02em; text-transform: none;
+    margin: 18px 0 10px; padding-top: 14px;
+    border-top: 1px solid var(--rule);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .sidebar h4 .rule { color: var(--mint); }
+  .sidebar h4:first-of-type { border-top: 0; padding-top: 0; }
+  .field { margin: 0 0 10px; }
+  .field label {
+    display: flex; justify-content: space-between; align-items: center;
+    color: var(--text-dim); font-size: 12px; margin-bottom: 4px;
+  }
+  .field label b { color: var(--mint); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .field input[type="range"] {
+    width: 100%; accent-color: var(--mint);
+    background: transparent; height: 4px;
+  }
+  .field input[type="text"],
+  .field textarea {
+    width: 100%; background: var(--bg-tile); color: var(--text);
+    border: 1px solid var(--rule); border-radius: 6px;
+    padding: 6px 8px; font: inherit; font-size: 12px;
+    box-sizing: border-box;
+  }
+  .field textarea {
+    resize: vertical; min-height: 72px;
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5;
+    padding: 10px 12px; background: #FFFFFF;
+  }
+  .field textarea::placeholder { color: var(--text-mute); font-style: italic; }
+  .field input:focus, .field textarea:focus {
+    outline: none; border-color: var(--mint);
+    box-shadow: 0 0 0 2px var(--mint-glow);
+  }
+  .field-row { display: flex; align-items: center; gap: 8px; color: var(--text-dim); font-size: 12px; }
+  .field-row input[type="checkbox"] { accent-color: var(--mint); width: 14px; height: 14px; }
+  .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .actions button {
+    width: 100%; padding: 8px; font: inherit; font-weight: 700;
+    letter-spacing: 0.06em; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--rule); background: #EFECE4; color: var(--text);
+  }
+  .actions button.primary {
+    background: var(--mint-dim); color: var(--mint); border-color: var(--mint);
+  }
+  .actions button:hover { filter: brightness(1.15); }
+  .config-status {
+    margin-top: 8px; font-size: 11px; color: var(--text-mute); min-height: 14px;
+  }
+  .config-status.ok { color: var(--mint); }
+  .config-status.err { color: var(--coral); }
+
+  /* ── header ── */
+  .header { display: flex; align-items: center; justify-content: space-between; padding: 0 0 14px; }
+  .title { display: flex; align-items: center; gap: 12px; font-weight: 700; letter-spacing: 0.06em; }
+  .title .rule { color: var(--mint); }
+  .title .sub { color: var(--text-dim); font-weight: 500; }
+  .right-cluster { display: flex; align-items: center; gap: 10px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 2px 10px; border-radius: 999px;
+    background: var(--mint-dim); color: var(--mint);
+    font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+    border: 1px solid #FFCEA8;
+  }
+  .pill.coral { background: var(--coral-dim); color: var(--coral); }
+  .pill.amber { background: var(--amber-dim); color: var(--amber); }
+  .pill.mute  { background: #EFECE4; color: var(--text-dim); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; }
+  .btn {
+    background: #EFECE4; color: var(--text); border: 1px solid var(--rule);
+    border-radius: 8px; padding: 4px 12px; font: inherit; font-weight: 600;
+    cursor: pointer; letter-spacing: 0.04em;
+  }
+  .btn:hover { background: #FFE3CC; border-color: var(--mint); color: var(--mint); }
+
+  .metricbar {
+    display: flex; flex-wrap: wrap; gap: 18px;
+    color: var(--text-dim); font-size: 12.5px;
+    padding: 0 0 16px; border-bottom: 1px solid var(--rule);
+  }
+  .metricbar b { color: var(--text); font-weight: 600; }
+  .sep { color: var(--text-mute); }
+
+  /* ── KPI tiles ── */
+  .tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin: 16px 0 18px; }
+  .tile {
+    background: var(--bg-tile); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 14px 16px; position: relative;
+  }
+  .tile .label { color: var(--text-mute); font-size: 11.5px; letter-spacing: 0.14em; text-transform: uppercase; }
+  .tile .value { font-size: 26px; font-weight: 700; margin-top: 6px; color: var(--text);
+                 display: flex; align-items: baseline; gap: 10px; }
+  .tile .value small { font-size: 12.5px; font-weight: 500; color: var(--text-dim); }
+  .tile .value.accent { color: var(--mint); }
+  .tile .value.danger { color: var(--coral); }
+  .tile .value.warn   { color: var(--amber); }
+  .tile .gutter {
+    position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 2px;
+    background: var(--mint);
+  }
+  .tile.coral .gutter { background: var(--coral); }
+  .tile.amber .gutter { background: var(--amber); }
+
+  .pipeline {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    margin: 14px 0 16px;
+  }
+  .phase {
+    background: var(--bg-tile);
+    border: 1px solid var(--rule);
+    border-radius: 8px;
+    padding: 9px 10px;
+    min-height: 70px;
+  }
+  .phase b {
+    display: block;
+    color: var(--text);
+    font-size: 11px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    margin-bottom: 5px;
+  }
+  .phase span {
+    display: block;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    line-height: 1.35;
+  }
+  @media (max-width: 980px) {
+    .pipeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+
+  .selector-panel {
+    background: var(--bg-tile);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 8px 0 16px;
+  }
+  .selector-panel .selector-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .selector-panel h3 {
+    margin: 0;
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+  .selector-panel .selector-meta {
+    color: var(--text-mute);
+    font-size: 11.5px;
+    text-align: right;
+  }
+  .selector-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+  .selector-block {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .selector-block .selector-label {
+    color: var(--text-mute);
+    font-size: 10.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+  .selector-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .selector-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--mint);
+    border-radius: 999px;
+    padding: 3px 12px 3px 9px;
+    color: #FFFFFF;
+    background: var(--mint);
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 12px; font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .selector-chip::before {
+    content: "✓"; font-weight: 700; opacity: 0.95;
+  }
+  .selector-chip.rejected {
+    color: var(--coral);
+    background: transparent;
+    border-color: var(--coral);
+    text-decoration: line-through;
+    text-decoration-color: var(--coral);
+    text-decoration-thickness: 1px;
+  }
+  .selector-chip.rejected::before {
+    content: "✕"; text-decoration: none; display: inline-block;
+  }
+  .selector-reason {
+    color: var(--text);
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 13px; font-style: italic; line-height: 1.55;
+    max-width: 70ch;
+    margin: 12px 0 0;
+  }
+  .selector-terminal {
+    margin-top: 10px;
+  }
+  .evidence-panel {
+    background: var(--bg-tile);
+    border: 1px solid var(--rule);
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin: 10px 0 16px;
+  }
+  .evidence-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 8px;
+  }
+  .evidence-head h3 {
+    margin: 0;
+    font-family: Inter, system-ui, sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+  .evidence-meta {
+    color: var(--text-mute);
+    font-size: 11.5px;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+  .evidence-list {
+    display: grid;
+    gap: 6px;
+    max-height: 260px;
+    overflow: auto;
+  }
+  .evidence-entry {
+    display: grid;
+    grid-template-columns: 140px 180px minmax(0, 1fr);
+    gap: 8px;
+    align-items: baseline;
+    border-top: 1px solid var(--rule-soft);
+    padding-top: 6px;
+    color: var(--text-dim);
+    font-size: 11.5px;
+    cursor: pointer;
+  }
+  .evidence-entry:hover,
+  .evidence-entry.selected {
+    color: var(--text);
+    background: #FFFFFF99;
+  }
+  .evidence-entry.selected {
+    box-shadow: inset 3px 0 0 var(--mint);
+    padding-left: 8px;
+  }
+  .evidence-entry:first-child { border-top: 0; padding-top: 0; }
+  .evidence-entry .event { color: var(--text); font-weight: 700; overflow-wrap: anywhere; }
+  .evidence-entry .metrics { color: var(--mint); }
+  .evidence-entry .summary { overflow-wrap: anywhere; }
+  .evidence-detail {
+    margin-top: 10px;
+  }
+  @media (max-width: 980px) {
+    .selector-grid { grid-template-columns: 1fr; }
+    .selector-panel .selector-top { display: block; }
+    .selector-panel .selector-meta { text-align: left; margin-top: 4px; }
+    .evidence-entry { grid-template-columns: 1fr; }
+    .evidence-meta { text-align: left; }
+  }
+
+  /* ── map ── */
+  .annot {
+    font-family: Inter, system-ui, sans-serif;
+    color: var(--text-mute);
+    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
+    margin: 18px 0 6px;
+  }
+  .map {
+    background: var(--bg-tile); border: 1px solid var(--rule);
+    border-radius: 10px; padding: 8px 8px 6px; margin-top: 6px;
+  }
+  .map svg { display: block; width: 100%; height: auto; }
+  .map-legend {
+    display: flex; flex-wrap: wrap; gap: 18px;
+    color: var(--text-dim); font-size: 12px; padding: 10px 14px 4px;
+  }
+  .map-legend .k { display: inline-flex; align-items: center; gap: 6px; }
+  .map-legend .k i { display: inline-block; width: 22px; height: 2px; border-radius: 2px; }
+  .map-legend .k i.main { background: var(--mint); height: 3px; }
+  .map-legend .k i.fork { background: var(--text-mute); }
+
+  /* SVG conventions */
+  .axis    { stroke: var(--rule); stroke-width: 1; }
+  .tick    { fill: var(--text-mute); font-size: 11px; letter-spacing: 0.08em; }
+  .tick.now{ fill: var(--mint); font-weight: 700; }
+  .mainline        { stroke: var(--mint); stroke-width: 3; fill: none;
+                     filter: drop-shadow(0 0 6px var(--mint-glow)); }
+  .mainline-future { stroke: var(--mint); stroke-width: 2; stroke-dasharray: 4 4; fill: none; opacity: 0.45; }
+  .survivor-path   { stroke: var(--mint); stroke-width: 4; fill: none; opacity: 0.35;
+                     filter: drop-shadow(0 0 8px var(--mint-glow)); }
+  .fork.safe       { stroke: var(--mint);   stroke-width: 2; fill: none; opacity: 0.9;  }
+  .fork.killed     { stroke: var(--coral);  stroke-width: 1.5; fill: none; stroke-dasharray: 3 3; }
+  .fork.stalled    { stroke: var(--amber);  stroke-width: 1.5; fill: none; stroke-dasharray: 3 3; }
+  .fork.looped     { stroke: var(--violet); stroke-width: 1.5; fill: none; stroke-dasharray: 3 3; }
+  .fork.errored    { stroke: var(--coral);  stroke-width: 1.5; fill: none; stroke-dasharray: 1 3; opacity: 0.85; }
+  .fork.live       { stroke: var(--text-dim); stroke-width: 1.5; fill: none; stroke-dasharray: 2 3; opacity: 0.7; }
+  .fork.survived   { stroke: var(--mint); stroke-width: 2; fill: none; opacity: 0.85; }
+  .fork.discarded  { stroke-width: 1.25; }
+  .fork-selectable { cursor: pointer; outline: none; }
+  .fork-selectable:focus .fork,
+  .fork-selectable:hover .fork,
+  .fork-selectable.selected .fork {
+    stroke-width: 4;
+    filter: drop-shadow(0 0 8px var(--mint-glow));
+  }
+  .fork-selectable.selected .node-future,
+  .fork-selectable.selected .endcap {
+    stroke: var(--text);
+    stroke-width: 2;
+  }
+  .fork-hit {
+    fill: none;
+    stroke: transparent;
+    stroke-width: 18;
+    pointer-events: stroke;
+  }
+
+  .node-main   { fill: var(--mint); stroke: var(--bg-soft); stroke-width: 3; }
+  .node-now    { fill: var(--mint); stroke: #fff; stroke-width: 2;
+                 filter: drop-shadow(0 0 8px var(--mint)); }
+  .node-future { fill: var(--bg-tile); stroke: var(--mint); stroke-width: 2; stroke-dasharray: 3 2; }
+  .endcap.killed  { fill: var(--coral);  }
+  .endcap.stalled { fill: var(--amber);  }
+  .endcap.looped  { fill: var(--violet); }
+  .endcap.errored { fill: var(--coral);  stroke: #fff; stroke-width: 1; }
+  .endcap.live    { fill: var(--text-mute); }
+  .endcap.discarded { stroke: var(--bg-soft); stroke-width: 1; }
+  .endcap.discarded.errored { stroke: var(--bg-soft); }
+
+  .lbl       { font-family: 'JetBrains Mono', monospace; font-size: 11px; fill: var(--text-dim); }
+  .lbl.main  { fill: var(--text); font-weight: 600; font-size: 12px; }
+  .lbl.dim   { fill: var(--text-mute); }
+  .lbl.mint  { fill: var(--mint); }
+  .lbl.coral { fill: var(--coral); }
+  .lbl.amber { fill: var(--amber); }
+  .lbl.violet{ fill: var(--violet); }
+  .fork-label.discarded { font-weight: 400; }
+
+  /* Fork action names hidden by default; reveal on hover/focus/selected of
+     the parent .fork-selectable group. Status glyph + endcap stay visible. */
+  .fork-label.hover-only { opacity: 0; transition: opacity 140ms ease; pointer-events: none; }
+  .fork-selectable:hover .fork-label.hover-only,
+  .fork-selectable:focus-within .fork-label.hover-only,
+  .fork-selectable.selected .fork-label.hover-only { opacity: 1; }
+  .fork-glyph { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; pointer-events: none; }
+
+  /* ── event log ── */
+  .log {
+    margin-top: 18px; padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    display: flex; flex-direction: column; gap: 4px; font-size: 12.5px;
+    max-height: 220px; overflow: auto;
+  }
+  .log .line { display: grid; grid-template-columns: 70px 80px 1fr; gap: 12px; align-items: center; }
+  .log .ts { color: var(--text-mute); }
+  .log .msg { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { display: inline-flex; justify-content: center; padding: 1px 8px;
+         border-radius: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.08em;
+         border: 1px solid var(--rule); }
+  .tag.fork   { background: #EFECE4;          color: var(--text-dim); }
+  .tag.kill   { background: var(--coral-dim); color: var(--coral); }
+  .tag.stall  { background: var(--amber-dim); color: var(--amber); }
+  .tag.loop   { background: var(--violet-dim);color: var(--violet); }
+  .tag.commit { background: var(--mint-dim);  color: var(--mint); }
+  .tag.reset  { background: #EFECE4;          color: var(--text-dim); }
+  .tag.error  { background: var(--coral-dim); color: var(--coral); }
+
+  .footer {
+    margin-top: 18px; padding-top: 12px;
+    border-top: 1px solid var(--rule);
+    display: flex; justify-content: space-between; align-items: center;
+    color: var(--text-mute); font-size: 12px;
+  }
+  .keys { display: flex; gap: 14px; }
+  .key b {
+    color: var(--text); background: #EFECE4;
+    border: 1px solid var(--rule); border-radius: 4px;
+    padding: 1px 6px; margin-right: 4px; font-weight: 600;
+  }
+  .err-banner {
+    margin: 10px 0 0; padding: 10px 14px;
+    background: var(--coral-dim); color: var(--coral);
+    border: 1px solid #F5C0CC; border-radius: 8px; font-size: 12.5px;
+    display: none;
+  }
+  .err-banner.show { display: block; }
+
+  /* ── selected future inspector ───────────────────────────────────────── */
+  .future-inspector {
+    position: fixed; top: 28px; right: 20px; bottom: 28px; z-index: 20;
+    width: min(390px, calc(100vw - 40px));
+    background: var(--bg-soft); border: 1px solid var(--rule);
+    border-radius: 12px; box-shadow: 0 1px 0 #1A18141A, 0 24px 64px #1A18142A;
+    transform: translateX(calc(100% + 28px)); transition: transform 160ms ease;
+    display: flex; flex-direction: column; overflow: hidden;
+  }
+  .future-inspector.open { transform: translateX(0); }
+  .inspector-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 16px 10px; border-bottom: 1px solid var(--rule);
+  }
+  .inspector-title {
+    min-width: 0; font-family: Inter, system-ui, sans-serif; font-size: 12px;
+    font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  }
+  .inspector-title span { color: var(--mint); }
+  .inspector-close {
+    width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--rule);
+    background: #EFECE4; color: var(--text-dim); font: inherit; cursor: pointer;
+  }
+  .inspector-body { padding: 16px 18px 18px; overflow: auto; }
+  .inspector-empty { color: var(--text-mute); font-size: 12.5px; }
+  .inspector-grid { display: grid; gap: 16px; }
+  .future-hero {
+    display: grid; gap: 6px; padding-bottom: 14px; border-bottom: 1px solid var(--rule);
+  }
+  .future-action {
+    font-family: Inter, system-ui, sans-serif; font-size: 21px; line-height: 1.12;
+    font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text);
+    overflow-wrap: anywhere;
+  }
+  .future-meta {
+    color: var(--text-dim); font-family: Inter, system-ui, sans-serif; font-size: 13px; font-weight: 600;
+  }
+  .future-status-line {
+    margin-top: 6px; color: var(--text); font-family: Inter, system-ui, sans-serif;
+    font-size: 15px; font-weight: 700;
+  }
+  .future-narrative {
+    margin: 0; color: var(--text-dim); font-size: 12.5px; line-height: 1.55;
+  }
+  .inspector-section { display: grid; gap: 8px; }
+  .inspector-section h4 {
+    margin: 0; color: var(--text); font-family: Inter, system-ui, sans-serif;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .inspector-list {
+    margin: 0; padding: 0; list-style: none; display: grid; gap: 4px;
+    color: var(--text-dim); font-size: 12.5px;
+  }
+  .inspector-list li { display: flex; gap: 8px; align-items: baseline; }
+  .inspector-list .mark { color: var(--mint); font-weight: 700; }
+  .path-list {
+    margin: 0; padding: 0; list-style: none; display: grid; gap: 6px;
+    font-size: 12.5px;
+  }
+  .path-list li {
+    display: grid; grid-template-columns: 42px minmax(0, 1fr) auto; gap: 8px;
+    align-items: baseline; color: var(--text-dim);
+  }
+  .path-list .tick { color: var(--text-mute); }
+  .path-list .action { color: var(--text); font-weight: 700; overflow-wrap: anywhere; }
+  .path-list .outcome { color: var(--text-dim); text-transform: lowercase; }
+  .model-block {
+    display: grid; gap: 2px; color: var(--text-dim); font-size: 12.5px;
+  }
+  .model-name { color: var(--text); font-weight: 700; overflow-wrap: anywhere; }
+  .inspector-label {
+    color: var(--text-mute); font-size: 10.5px; letter-spacing: 0.13em; text-transform: uppercase;
+  }
+  .inspector-value { color: var(--text); min-width: 0; overflow-wrap: anywhere; }
+  .inspector-status {
+    color: var(--text-dim); text-transform: capitalize;
+  }
+  .inspector-status.live { color: var(--text-dim); }
+  .inspector-status.killed,
+  .inspector-status.errored { color: var(--coral); }
+  .inspector-status.stalled { color: var(--amber); }
+  .inspector-status.survived { color: var(--mint); }
+  .inspector-disclosure {
+    border-top: 1px solid var(--rule-soft); padding-top: 10px;
+  }
+  .inspector-disclosure summary {
+    cursor: pointer; color: var(--text); font-family: Inter, system-ui, sans-serif;
+    font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  }
+  .inspector-stream {
+    margin: 8px 0 0; padding: 10px; min-height: 130px; max-height: 360px; overflow: auto;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+    background: var(--bg-tile); color: var(--text-dim);
+    border: 1px solid var(--rule); border-radius: 8px;
+    font: 11.5px/1.55 'JetBrains Mono','Cascadia Code', ui-monospace, Menlo, Consolas, monospace;
+  }
+  .terminal-stream {
+    min-height: 260px; max-height: 460px;
+    background: #191713; color: #EEE9DD; border-color: #2D2922;
+    box-shadow: inset 0 0 0 1px #FFFFFF0A;
+  }
+  .inspector-note { color: var(--text-mute); font-size: 11.5px; line-height: 1.5; }
+
+  /* ── splash / connect screen ─────────────────────────────────────── */
+  .splash {
+    position: fixed; inset: 0; z-index: 50;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(246, 244, 239, 0.92);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  }
+  .splash.hidden { display: none; }
+  .splash-card {
+    width: min(460px, 92vw); padding: 28px 28px 22px;
+    background: var(--bg-soft); border: 1px solid var(--rule);
+    border-radius: 14px; box-shadow: 0 1px 0 #1A181410, 0 24px 60px #1A181425;
+    text-align: center;
+  }
+  .splash-card h2 {
+    font-family: Inter, system-ui, sans-serif;
+    color: var(--text); font-size: 20px; font-weight: 700;
+    letter-spacing: 0.08em; margin: 0 0 4px;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .splash-card h2 .rule { color: var(--mint); }
+  .splash-card .tagline {
+    color: var(--text-dim); font-size: 12.5px;
+    letter-spacing: 0.06em; margin: 0 0 22px;
+  }
+  .splash-card .connect-btn {
+    width: 100%; padding: 12px;
+    background: var(--mint); color: #FFFFFF;
+    border: 1px solid var(--mint); border-radius: 10px;
+    font: inherit; font-weight: 700; letter-spacing: 0.08em;
+    font-size: 14px; cursor: pointer;
+    box-shadow: 0 4px 10px var(--mint-glow);
+  }
+  .splash-card .connect-btn:hover { filter: brightness(1.05); }
+  .splash-card .connect-btn[disabled] { opacity: 0.6; cursor: wait; }
+  .splash-card .target {
+    margin: 14px 0 8px; color: var(--text-mute); font-size: 11.5px;
+    letter-spacing: 0.08em;
+  }
+  .splash-card .target b { color: var(--text); font-weight: 600; }
+  .splash-card .hint {
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px solid var(--rule);
+    color: var(--text-dim); font-size: 12px; text-align: left;
+    line-height: 1.6;
+  }
+  .splash-card .hint code {
+    background: var(--bg-tile); color: var(--text);
+    padding: 1px 6px; border-radius: 4px;
+    border: 1px solid var(--rule); font-size: 11.5px;
+  }
+  .splash-card .err {
+    margin-top: 12px; padding: 8px 12px;
+    background: var(--coral-dim); color: var(--coral);
+    border: 1px solid #F5C0CC; border-radius: 6px;
+    font-size: 12px; display: none; text-align: left;
+  }
+  .splash-card .err.show { display: block; }
+</style>
+</head>
+<body>
+
+<div id="splash" class="splash">
+  <div class="splash-card">
+    <h2><span class="rule">▎</span>FUTURE SHIELD</h2>
+    <div class="tagline">multiverse pre-action simulator</div>
+    <button id="connect-btn" class="connect-btn" type="button">Connect</button>
+    <div class="target">target · <b id="splash-target">—</b></div>
+    <div id="splash-hint" class="hint" style="display:none;">
+      If the engine isn't running yet, start it from the project folder:<br>
+      <code>python multiverse_1.py</code><br>
+      then press <b>Connect</b>.
+    </div>
+    <div id="splash-err" class="err"></div>
+  </div>
+</div>
+
+<div class="shell">
+
+<aside class="sidebar" aria-label="Multiverse controls">
+  <h3><span class="rule">▎</span>Controls</h3>
+
+  <h4><span class="rule">▎</span>Run</h4>
+  <div class="field">
+    <label>how many futures at once? <b id="lbl-fpt">3</b></label>
+    <input id="ctl-fpt" type="range" min="1" max="5" step="1" value="3">
+  </div>
+  <div class="field">
+    <label>how far ahead to look? <b id="lbl-look">2</b></label>
+    <input id="ctl-look" type="range" min="1" max="5" step="1" value="2">
+  </div>
+  <div class="field">
+    <label>how many steps total? <b id="lbl-max">6</b></label>
+    <input id="ctl-max" type="range" min="1" max="12" step="1" value="6">
+  </div>
+  <div class="field">
+    <label>delay between loop steps (s) <b id="lbl-tick">0.1</b></label>
+    <input id="ctl-tick" type="range" min="0" max="2" step="0.1" value="0.1">
+  </div>
+  <div class="field">
+    <label>max wait per Gemma call (s) <b id="lbl-timeout">30</b></label>
+    <input id="ctl-timeout" type="range" min="5" max="120" step="1" value="30">
+  </div>
+  <div class="field">
+    <div class="field-row">
+      <input id="ctl-autoloop" type="checkbox" checked>
+      <label for="ctl-autoloop" style="margin:0;">restart automatically?</label>
+    </div>
+  </div>
+
+  <h4><span class="rule">▎</span>Scenario</h4>
+  <div class="field">
+    <label>goal</label>
+    <input id="ctl-goal" type="text" value="prevent the live system from entering a failure state">
+  </div>
+  <div class="field">
+    <label>Seed world state</label>
+    <textarea id="ctl-state" rows="4" placeholder="Describe the situation the system is observing right now…">embodied autonomous system operating near a danger zone; recent visual frames show a human hand and fragile object near the action boundary; state signals indicate rising proximity risk and delayed intervention risk</textarea>
+  </div>
+  <div class="field">
+    <label>allowed actions (CSV)</label>
+    <input id="ctl-actions" type="text" value="CONTINUE,SAFE_STOP,DIVERT_PATH,SLOW_DOWN,OBSERVE_MORE,ESCALATE_TO_HUMAN">
+  </div>
+
+  <h4><span class="rule">▎</span>Inference</h4>
+  <div class="field">
+    <label>provider</label>
+    <input id="ctl-provider" type="text" value="cerebras">
+  </div>
+  <div class="field">
+    <label>model</label>
+    <input id="ctl-model" type="text" value="gemma-4-31b">
+  </div>
+  <div class="field">
+    <label>hermes skill (blank = direct)</label>
+    <input id="ctl-skill" type="text" value="">
+  </div>
+
+  <div id="cfg-status" class="config-status"></div>
+</aside>
+
+<div class="page">
+
+  <div class="header">
+    <div class="title">
+      <span class="rule">▎</span>
+      FUTURE SHIELD
+      <span class="sub">· multiverse map</span>
+    </div>
+    <div class="right-cluster">
+      <span id="model-pill" class="pill"><span class="dot"></span><span id="model-label">CONNECTING…</span></span>
+      <span id="run-pill" class="pill mute">idle</span>
+      <button id="play-btn" class="btn primary" type="button">▶ Play</button>
+      <button id="reset-btn" class="btn" type="button">↺ Reset</button>
+    </div>
+  </div>
+
+  <div class="metricbar">
+    <span>tick <b id="m-tick">0</b><span class="sep">/</span><b id="m-max">0</b></span><span class="sep">·</span>
+    <span>look-ahead <b id="m-look">0</b></span><span class="sep">·</span>
+    <span>forks/tick <b id="m-fpt">0</b></span><span class="sep">·</span>
+    <span>forks open <b id="m-open">0</b></span><span class="sep">·</span>
+    <span>survived <b id="m-survived">0</b></span><span class="sep">·</span>
+    <span>killed <b id="m-killed">0</b></span><span class="sep">·</span>
+    <span>tokens <b id="m-tokens">0</b></span><span class="sep">·</span>
+    <span>tps <b id="m-tps">0</b></span><span class="sep">·</span>
+    <span>elapsed <b id="m-elapsed">0s</b></span>
+  </div>
+
+  <div id="err-banner" class="err-banner"></div>
+
+  <div class="tiles">
+    <div class="tile">
+      <div class="gutter"></div>
+      <div class="label">FUTURE PROBES</div>
+      <div id="tile-branches" class="value accent">0 <small>simulated</small></div>
+    </div>
+    <div class="tile coral">
+      <div class="gutter"></div>
+      <div class="label">BRANCH OUTCOMES</div>
+      <div id="tile-risk" class="value danger">0 <small>rejected</small></div>
+    </div>
+    <div class="tile">
+      <div class="gutter"></div>
+      <div class="label">SURVIVOR / VERIFY</div>
+      <div id="tile-outcome" class="value accent">— <small>awaiting collapse</small></div>
+    </div>
+  </div>
+
+  <div class="selector-panel" aria-label="Future selector inference">
+    <div class="selector-top">
+      <h3>Future Selector</h3>
+      <div id="selector-meta" class="selector-meta">waiting for mainline prompt</div>
+    </div>
+    <div class="selector-grid">
+      <div class="selector-block">
+        <div class="selector-label">selected for probes</div>
+        <div id="selector-selected" class="selector-chips"></div>
+      </div>
+      <div class="selector-block">
+        <div class="selector-label">rejected before probe</div>
+        <div id="selector-rejected" class="selector-chips"></div>
+      </div>
+    </div>
+    <div id="selector-reason" class="selector-reason">No selector inference yet. Press Play to ask Gemma which futures should be sent to agents.</div>
+  </div>
+
+  <div class="annot">MAP — mainline reality → future forks → failed branches die → survivor collapses → verified outcome</div>
+  <div class="map">
+    <svg id="map-svg" viewBox="0 0 1140 440" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
+    <div class="map-legend">
+      <span class="k"><i class="main"></i>mainline (committed)</span>
+      <span class="k"><i class="fork"></i>multiverse fork</span>
+      <span class="k" style="color:var(--coral)">✕ killed · failure state found</span>
+      <span class="k" style="color:var(--amber)">⚠ stalled · weak evidence</span>
+      <span class="k" style="color:var(--violet)">↺ looped · state repeated</span>
+      <span class="k" style="color:var(--mint)">● survivor · collapses into mainline</span>
+    </div>
+  </div>
+
+  <div class="annot">EVENT STREAM</div>
+  <div id="log" class="log"></div>
+
+  <div class="footer">
+    <div class="keys">
+      <span class="key"><b>R</b>reset</span>
+      <span class="key"><b>?</b>help</span>
+    </div>
+    <div id="footer-meta">— · seed — · skill —</div>
+  </div>
+
+</div>
+
+</div><!-- /shell -->
+
+<aside id="future-inspector" class="future-inspector" aria-label="Selected future inspector" aria-live="polite">
+  <div class="inspector-head">
+    <div class="inspector-title"><span>▎</span>FUTURE INSPECTOR</div>
+    <button id="inspector-close" class="inspector-close" type="button" aria-label="Close inspector">×</button>
+  </div>
+  <div class="inspector-body">
+    <div id="inspector-empty" class="inspector-empty">No future selected.</div>
+    <div id="inspector-detail" class="inspector-grid" hidden>
+      <div class="future-hero">
+        <div id="insp-action" class="future-action">-</div>
+        <div class="future-meta"><span id="insp-status" class="inspector-status live">Live</span> · <span id="insp-confidence">-</span></div>
+        <div id="insp-status-line" class="future-status-line">Waiting for probe</div>
+        <p id="insp-narrative" class="future-narrative">Select a future branch to inspect the probe.</p>
+      </div>
+
+      <section class="inspector-section">
+        <h4 id="insp-why-title">Why this branch is live</h4>
+        <ul id="insp-why" class="inspector-list"></ul>
+      </section>
+
+      <section class="inspector-section">
+        <h4>Path</h4>
+        <ul id="insp-path" class="path-list"></ul>
+      </section>
+
+      <section class="inspector-section">
+        <h4>Model</h4>
+        <div class="model-block">
+          <div id="insp-model" class="model-name">-</div>
+          <div id="insp-model-metrics">-</div>
+        </div>
+      </section>
+
+      <details class="inspector-disclosure" open>
+        <summary>Model Inference Terminal</summary>
+        <pre id="insp-terminal" class="inspector-stream terminal-stream"></pre>
+        <div class="inspector-note">Conversation view: exact Future Shield prompt sent to Gemma, followed by Gemma's raw response for this branch.</div>
+      </details>
+
+      <details class="inspector-disclosure">
+        <summary>All Probe Details</summary>
+        <pre id="insp-stream" class="inspector-stream"></pre>
+        <div class="inspector-note">Latest probe telemetry from /api/state for this selected future.</div>
+      </details>
+    </div>
+
+    <div id="inspector-tick" class="inspector-grid" hidden>
+      <div class="future-hero">
+        <div id="insp-tick-action" class="future-action">Tick t0</div>
+        <div class="future-meta">Committed mainline step</div>
+        <p id="insp-tick-narrative" class="future-narrative">The Future Selector inference that produced this committed action is shown below.</p>
+      </div>
+    </div>
+
+    <details id="insp-selector-disclosure" class="inspector-disclosure" hidden open>
+      <summary>Selector Inference Terminal</summary>
+      <pre id="insp-selector-terminal" class="inspector-stream terminal-stream"></pre>
+      <div class="inspector-note">Exact Future Selector prompt sent to Gemma and the raw response that picked the probes for this tick.</div>
+    </details>
+  </div>
+</aside>
+
+<script>
+// ────────────────────────────────────────────────────────────────────────────
+// Future Shield map renderer
+// Polls /api/state, paints the SVG. Pure DOM, no framework.
+// ────────────────────────────────────────────────────────────────────────────
+
+const POLL_MS = 400;
+const LOG_POLL_MS = 1600;
+const SVG_NS = "http://www.w3.org/2000/svg";
+let pollTimer = null;
+let logPollTimer = null;
+let connected = false;
+let failureStreak = 0;
+const FAILURE_LIMIT = 3;  // re-show splash after this many consecutive failures
+let lastState = null;
+let lastNowMotionKey = "";
+let activeNowMotion = null;
+let nowMotionFrame = null;
+let selectedFutureId = null;
+let inspectorOpen = false;
+let selectedEvidenceKey = null;
+let latestEvidenceEntries = [];
+
+// SVG layout
+const W = 1140, H = 440;
+const MARGIN_L = 80, MARGIN_R = 60;
+const MAIN_Y = 220;
+const AXIS_Y = 410;
+const TRACK_GAP = 58;       // vertical gap between future branches
+const MIN_TRACK_OFFSET = 58; // closest a rejected branch gets to the mainline
+const BRANCH_RISE = 96;      // selected top/bottom tracks become visible reality lanes
+const LABEL_CHAR_W = 7.2;
+const LABEL_H = 16;
+const LABEL_GAP = 5;
+const MAINLINE_LABEL_MAX = 16;
+const FORK_LABEL_MAX = 18;
+
+function el(tag, attrs = {}, text = null) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  return e;
+}
+
+function tickX(t, maxTicks) {
+  const span = Math.max(maxTicks, 2);
+  return MARGIN_L + (t / span) * (W - MARGIN_L - MARGIN_R);
+}
+
+// Distribute N forks symmetrically around the mainline, skipping y=MAIN_Y.
+// Half (rounded up) go above the mainline, the rest below.
+function buildForkYMap(forks) {
+  const groups = new Map();  // from_tick → array of futures (only non-survivors get a branch)
+  for (const f of forks) {
+    if (f.status === "survived") continue;
+    if (!groups.has(f.from_tick)) groups.set(f.from_tick, []);
+    groups.get(f.from_tick).push(f);
+  }
+  const yMap = new Map();    // fork.id → y
+  for (const [, group] of groups) {
+    group.sort((a, b) => (a.id < b.id ? -1 : 1));   // stable order so y is deterministic
+    const N = group.length;
+    const above = Math.ceil(N / 2);
+    for (let i = 0; i < N; i++) {
+      let y;
+      if (i < above) {                              // above branches, top-down
+        const rank = above - i;                     // 1..above (1 is closest to mainline)
+        y = MAIN_Y - (MIN_TRACK_OFFSET + (rank - 1) * TRACK_GAP);
+      } else {                                      // below branches, top-down
+        const rank = i - above + 1;                 // 1..below
+        y = MAIN_Y + (MIN_TRACK_OFFSET + (rank - 1) * TRACK_GAP);
+      }
+      yMap.set(group[i].id, y);
+    }
+  }
+  return yMap;
+}
+
+function curveControls(x1, y1, x2, y2) {
+  const dx = (x2 - x1) * 0.5;
+  return {
+    x1, y1,
+    c1x: x1 + dx, c1y: y1,
+    c2x: x2 - dx, c2y: y2,
+    x2, y2
+  };
+}
+
+function curveTo(x1, y1, x2, y2) {
+  const c = curveControls(x1, y1, x2, y2);
+  return `M ${c.x1} ${c.y1} C ${c.c1x} ${c.c1y}, ${c.c2x} ${c.c2y}, ${c.x2} ${c.y2}`;
+}
+
+function curveSegment(c) {
+  return `C ${c.c1x} ${c.c1y}, ${c.c2x} ${c.c2y}, ${c.x2} ${c.y2}`;
+}
+
+function pointOnCurve(c, t) {
+  const u = 1 - t;
+  const tt = t * t;
+  const uu = u * u;
+  return {
+    x: (uu * u * c.x1) + (3 * uu * t * c.c1x) + (3 * u * tt * c.c2x) + (tt * t * c.x2),
+    y: (uu * u * c.y1) + (3 * uu * t * c.c1y) + (3 * u * tt * c.c2y) + (tt * t * c.y2)
+  };
+}
+
+function branchLaneY(fork) {
+  const track = String(fork.track || "").toLowerCase();
+  if (track === "top") return MAIN_Y - BRANCH_RISE;
+  if (track === "bottom") return MAIN_Y + BRANCH_RISE;
+  return MAIN_Y;
+}
+
+function selectedForkForTick(state, fromTick, action) {
+  return (state.forks || []).find(f =>
+    f.from_tick === fromTick &&
+    f.status === "survived" &&
+    normalizeAction(f.action) === normalizeAction(action)
+  );
+}
+
+function buildRealityGeometry(state) {
+  const points = new Map();
+  const segments = [];
+  const maxTicks = state.max_ticks;
+  const mainline = state.mainline || [];
+  if (!mainline.length) return { points, segments };
+
+  points.set(mainline[0].tick, { x: tickX(mainline[0].tick, maxTicks), y: MAIN_Y });
+  for (let i = 1; i < mainline.length; i++) {
+    const prev = mainline[i - 1];
+    const curr = mainline[i];
+    const fromPoint = points.get(prev.tick) || { x: tickX(prev.tick, maxTicks), y: MAIN_Y };
+    const selected = selectedForkForTick(state, prev.tick, curr.action);
+    const toPoint = {
+      x: tickX(curr.tick, maxTicks),
+      y: selected ? branchLaneY(selected) : fromPoint.y
+    };
+    const curve = curveControls(fromPoint.x, fromPoint.y, toPoint.x, toPoint.y);
+    points.set(curr.tick, toPoint);
+    segments.push({ fromTick: prev.tick, toTick: curr.tick, fork: selected, curve });
+  }
+  return { points, segments };
+}
+
+function getNowDisplayPoint(state, geometry) {
+  const nowTick = state.now_tick;
+  const nowPoint = geometry.points.get(nowTick) || { x: tickX(nowTick, state.max_ticks), y: MAIN_Y };
+  const prevPoint = geometry.points.get(nowTick - 1);
+  if (!prevPoint || nowTick <= 0) {
+    activeNowMotion = null;
+    return nowPoint;
+  }
+
+  const key = `${state.run_id || "run"}:${nowTick}:${prevPoint.x},${prevPoint.y}:${nowPoint.x},${nowPoint.y}`;
+  if (key !== lastNowMotionKey) {
+    lastNowMotionKey = key;
+    activeNowMotion = {
+      key,
+      startedAt: performance.now(),
+      duration: 720,
+      curve: curveControls(prevPoint.x, prevPoint.y, nowPoint.x, nowPoint.y)
+    };
+  }
+
+  if (!activeNowMotion || activeNowMotion.key !== key) return nowPoint;
+  const raw = Math.min(Math.max((performance.now() - activeNowMotion.startedAt) / activeNowMotion.duration, 0), 1);
+  if (raw >= 1) {
+    activeNowMotion = null;
+    return nowPoint;
+  }
+
+  if (nowMotionFrame == null) {
+    nowMotionFrame = requestAnimationFrame(() => {
+      nowMotionFrame = null;
+      if (lastState) render(lastState);
+    });
+  }
+  const eased = raw < 0.5 ? 2 * raw * raw : 1 - Math.pow(-2 * raw + 2, 2) / 2;
+  return pointOnCurve(activeNowMotion.curve, eased);
+}
+
+function clipText(s, max = 80) {
+  if (!s) return "";
+  s = String(s).replace(/\s+/g, " ").trim();
+  return s.length <= max ? s : s.slice(0, max - 1) + "…";
+}
+
+function actionLabel(s) {
+  return String(s || "").replace(/_/g, " ");
+}
+
+function normalizeAction(s) {
+  return actionLabel(s).replace(/\s+/g, " ").trim().toUpperCase();
+}
+
+const inspectorEl = document.getElementById("future-inspector");
+const inspectorEmpty = document.getElementById("inspector-empty");
+const inspectorDetail = document.getElementById("inspector-detail");
+const inspectorTick = document.getElementById("inspector-tick");
+const inspectorSelectorDisc = document.getElementById("insp-selector-disclosure");
+const inspectorClose = document.getElementById("inspector-close");
+let inspectorMode = "fork"; // "fork" | "mainline"
+let selectedMainlineTick = null;
+
+function setText(id, value) {
+  const node = document.getElementById(id);
+  if (node) node.textContent = value == null || value === "" ? "-" : String(value);
+}
+
+function setList(id, items, renderItem) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.replaceChildren();
+  for (const item of items) {
+    node.appendChild(renderItem(item));
+  }
+}
+
+function displayFutureStatus(status) {
+  if (status === "looped") return "stalled (looped)";
+  const label = status || "live";
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function statusClass(status) {
+  if (status === "looped") return "stalled";
+  if (["live", "killed", "stalled", "survived", "errored"].includes(status)) return status;
+  return "live";
+}
+
+function statusTone(status) {
+  if (status === "looped") return "stalled";
+  return status || "live";
+}
+
+function probeDepth(f, state) {
+  const depth = Number(f.depth || 0);
+  return depth > 0 ? depth : Number(state.look_ahead || 0);
+}
+
+function probeDepthText(f, state) {
+  const depth = probeDepth(f, state);
+  return depth > 0 ? `${depth}-step probe` : "probe";
+}
+
+function terminalTick(f) {
+  const depth = Number(f.depth || 0);
+  return Number(f.from_tick || 0) + Math.max(depth, 1);
+}
+
+const DISCARDED_FORK_STATUSES = new Set(["killed", "errored", "stalled", "looped"]);
+
+function isDiscardedFork(status) {
+  return DISCARDED_FORK_STATUSES.has(status);
+}
+
+function failedBranchVisual(f, nowTick) {
+  const age = Math.max(0, Number(nowTick || 0) - terminalTick(f));
+  const fadeStep = Math.min(age, 4);
+  return {
+    ageClass: age <= 1 ? "recently-failed" : "older-failed",
+    pathOpacity: (age <= 1 ? 0.35 : Math.max(0.23, 0.35 - fadeStep * 0.03)).toFixed(2),
+    labelOpacity: Math.max(0.42, 0.50 - fadeStep * 0.02).toFixed(2),
+    endcapOpacity: Math.max(0.28, 0.45 - fadeStep * 0.04).toFixed(2),
+    endcapRadius: Math.max(4.5, 5.5 - fadeStep * 0.25).toFixed(2)
+  };
+}
+
+function confidenceLabel(confidence) {
+  const raw = Number(confidence || 0);
+  if (!Number.isFinite(raw) || raw <= 0) return "confidence pending";
+  const pct = raw <= 1 ? raw * 100 : raw;
+  return `${Math.round(pct)}%`;
+}
+
+function statusLine(f, state) {
+  const depth = probeDepthText(f, state);
+  switch (statusTone(f.status)) {
+    case "survived": return `Safe across ${depth}`;
+    case "killed": return `Killed at t${terminalTick(f)} during ${depth}`;
+    case "stalled": return `Stalled during ${depth}`;
+    case "errored": return `Probe errored during ${depth}`;
+    default: return `Still probing ${depth}`;
+  }
+}
+
+function statusNarrative(f, state) {
+  const reason = f.reason ? ` ${f.reason}` : "";
+  switch (statusTone(f.status)) {
+    case "survived":
+      return `The branch moved away from the failure boundary and reached a stable state. No risk threshold was crossed during the probe window.${reason}`;
+    case "killed":
+      return `The branch crossed a failure boundary or predicted an unsafe state before the probe window completed.${reason}`;
+    case "stalled":
+      return `The probe could not maintain enough evidence to keep advancing this branch, so it stopped before collapse.${reason}`;
+    case "errored":
+      return `The model probe or parser failed before this branch could be evaluated cleanly.${reason}`;
+    default:
+      return `The branch is still being evaluated. Its latest available probe details are shown below.${reason}`;
+  }
+}
+
+function whyTitle(status) {
+  switch (statusTone(status)) {
+    case "survived": return "Why it survived";
+    case "killed": return "Why it was killed";
+    case "stalled": return "Why it stalled";
+    case "errored": return "Why it errored";
+    default: return "Why it is live";
+  }
+}
+
+function whyBullets(f) {
+  switch (statusTone(f.status)) {
+    case "survived":
+      return ["avoided failure boundary", "preserved reversible action", "improved state over time", "no risk detected across probe"];
+    case "killed":
+      return ["failure boundary was reached", "risk threshold was crossed", "branch did not remain safe through the probe", f.reason || "model predicted failure"];
+    case "stalled":
+      return ["evidence was too weak", "branch lost forward momentum", "collapse could not choose this path", f.reason || "probe marked the state as stalled"];
+    case "errored":
+      return ["model call or parsing failed", "branch could not produce a valid packet", f.reason || "probe details contain the error"];
+    default:
+      return ["probe is still running", "outcome is not final yet", "telemetry updates as /api/state changes"];
+  }
+}
+
+function pathEntries(f) {
+  const rawPath = Array.isArray(f.path) && f.path.length ? f.path : [`${f.action || "pending"}→pending`];
+  return rawPath.map((raw, index) => {
+    const parts = String(raw).split("→");
+    return {
+      tick: `t${Number(f.from_tick || 0) + index + 1}`,
+      action: actionLabel(parts[0] || f.action || "pending"),
+      outcome: (parts[1] || "pending").trim(),
+    };
+  });
+}
+
+function titleCaseToken(token) {
+  const lower = String(token || "").toLowerCase();
+  if (!lower) return "";
+  if (/\d/.test(lower)) return lower.toUpperCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
+function prettyName(value) {
+  return String(value || "?")
+    .replace(/[_-]+/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(titleCaseToken)
+    .join(" ");
+}
+
+function modelName(f, state) {
+  const probe = f.latest_probe || {};
+  return `${prettyName(probe.provider || state.provider)} · ${prettyName(probe.model || state.model)}`;
+}
+
+function modelMetrics(f) {
+  const probe = f.latest_probe || {};
+  const tokens = Number(probe.total_tokens_estimate || probe.output_tokens_estimate || 0);
+  const tps = Number(probe.total_tokens_per_second || probe.output_tokens_per_second || 0);
+  const pieces = [];
+  if (tokens > 0) pieces.push(`${Math.round(tokens).toLocaleString()} tokens`);
+  if (tps > 0) pieces.push(`${tps.toFixed(1)} tok/sec`);
+  if (Number(probe.duration_seconds || 0) > 0) pieces.push(`${Number(probe.duration_seconds).toFixed(1)} sec`);
+  return pieces.length ? pieces.join(" · ") : "probe metrics pending";
+}
+
+function detailsPayload(f, state) {
+  const probe = f.latest_probe || {};
+  return {
+    fork_id: f.id || "-",
+    run_id: state.run_id || "-",
+    from_tick: f.from_tick,
+    action: f.action,
+    track: f.track,
+    status: f.status || "live",
+    depth_completed: f.depth || 0,
+    look_ahead: state.look_ahead,
+    confidence: f.confidence || 0,
+    predicted_state: f.predicted_state || "",
+    reason: f.reason || "",
+    path: Array.isArray(f.path) ? f.path : [],
+    latest_probe: probe,
+  };
+}
+
+function prettyJson(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (err) {
+    return String(value);
+  }
+}
+
+function inferenceTerminalText(f, state) {
+  const probe = f.latest_probe || {};
+  const prompt = probe.prompt || "";
+  const raw = probe.raw_output || "";
+  const parsed = probe.parsed_packet ? prettyJson(probe.parsed_packet) : "";
+  const model = modelName(f, state);
+  const metrics = modelMetrics(f);
+  const cancelled = !!probe.cancelled || String(probe.error || "").toLowerCase().includes("process killed");
+  const duration = Number(probe.duration_seconds || 0);
+  const lifecycle = [];
+  lifecycle.push(`status=${displayFutureStatus(f.status).toLowerCase()}`);
+  if (probe.status) lifecycle.push(`probe=${probe.status}`);
+  if (probe.started_at) lifecycle.push(`started=${probe.started_at}`);
+  if (probe.finished_at) lifecycle.push(`ended=${probe.finished_at}`);
+  if (duration > 0) lifecycle.push(`duration=${duration.toFixed(2)}s`);
+  if (cancelled) lifecycle.push("interrupted=branch collapsed before completion");
+  const rawFallback = cancelled
+    ? [
+        "No completed model response was captured.",
+        "The prompt had reached the probe, but this branch was killed",
+        "when another future collapsed into the mainline."
+      ].join("\n")
+    : [
+        "No raw model response is available yet for this branch.",
+        "If the branch is still live, this will update after the probe returns."
+      ].join("\n");
+  const lines = [
+    `$ branch ${f.id || "-"} · ${actionLabel(f.action)} · ${displayFutureStatus(f.status)}`,
+    `$ model ${model}`,
+    `$ metrics ${metrics}`,
+    `$ lifecycle ${lifecycle.join(" · ") || "pending"}`,
+    "",
+    "FUTURE_SHIELD >",
+    prompt || [
+      "No prompt is available yet for this branch.",
+      "This usually means the branch has not reached its first model call,",
+      "or it was killed before Gemma returned."
+    ].join("\n"),
+    "",
+    "GEMMA >",
+    raw || rawFallback,
+  ];
+  if (parsed) {
+    lines.push("", "PARSED_PACKET >", parsed);
+  }
+  if (probe.error) {
+    lines.push("", "ERROR >", String(probe.error));
+  }
+  return lines.join("\n");
+}
+
+function selectorMetrics(selector) {
+  const tokens = Number(selector.total_tokens_estimate || selector.output_tokens_estimate || 0);
+  const tps = Number(selector.total_tokens_per_second || selector.output_tokens_per_second || 0);
+  const duration = Number(selector.duration_seconds || 0);
+  const pieces = [];
+  if (selector.status) pieces.push(String(selector.status));
+  if (selector.ok === true) pieces.push("ok");
+  if (selector.ok === false) pieces.push("error");
+  if (tokens > 0) pieces.push(`${Math.round(tokens).toLocaleString()} tokens`);
+  if (tps > 0) pieces.push(`${tps.toFixed(1)} tok/sec`);
+  if (duration > 0) pieces.push(`${duration.toFixed(1)} sec`);
+  return pieces.length ? pieces.join(" · ") : "waiting for mainline prompt";
+}
+
+function selectorTerminalText(selector) {
+  if (!selector || !Object.keys(selector).length) {
+    return [
+      "FUTURE_SELECTOR >",
+      "waiting for mainline / reality to request candidate futures",
+      "",
+      "GEMMA >",
+      "No selector response has been requested yet."
+    ].join("\n");
+  }
+
+  const prompt = selector.prompt || "";
+  const raw = selector.raw_output || "";
+  const parsed = selector.parsed_packet ? prettyJson(selector.parsed_packet) : "";
+  const lifecycle = [];
+  if (selector.started_at) lifecycle.push(`started=${selector.started_at}`);
+  if (selector.finished_at) lifecycle.push(`ended=${selector.finished_at}`);
+  if (selector.requested_futures) lifecycle.push(`agents=${selector.requested_futures}`);
+  if (selector.needs_joint_info != null) lifecycle.push(`needs_joint_info=${selector.needs_joint_info}`);
+
+  const lines = [
+    `$ phase FUTURE_SELECTOR · ${selector.ok === false ? "Error" : (selector.status || "ready")}`,
+    `$ model ${prettyName(selector.provider)} · ${prettyName(selector.model)}`,
+    `$ metrics ${selectorMetrics(selector)}`,
+    `$ lifecycle ${lifecycle.join(" · ") || "pending"}`,
+    "",
+    "FUTURE_SELECTOR >",
+    prompt || "No selector prompt is available yet.",
+    "",
+    "GEMMA >",
+    raw || "No raw selector response is available yet.",
+  ];
+  if (parsed) {
+    lines.push("", "PARSED_SELECTOR_PACKET >", parsed);
+  }
+  if (selector.error) {
+    lines.push("", "ERROR >", String(selector.error));
+  }
+  return lines.join("\n");
+}
+
+function renderChipList(id, items, rejected = false) {
+  const node = document.getElementById(id);
+  if (!node) return;
+  node.replaceChildren();
+  const safeItems = Array.isArray(items) ? items : [];
+  if (!safeItems.length) {
+    const empty = document.createElement("span");
+    empty.className = "selector-chip";
+    empty.textContent = "none yet";
+    node.appendChild(empty);
+    return;
+  }
+  for (const item of safeItems) {
+    const chip = document.createElement("span");
+    chip.className = rejected ? "selector-chip rejected" : "selector-chip";
+    if (typeof item === "string") {
+      chip.textContent = actionLabel(item);
+    } else if (item && typeof item === "object") {
+      const action = actionLabel(item.action || "?");
+      const reason = item.reason ? ` · ${item.reason}` : "";
+      chip.textContent = `${action}${reason}`;
+      if (item.reason) chip.title = item.reason;
+    } else {
+      chip.textContent = String(item ?? "unknown");
+    }
+    node.appendChild(chip);
+  }
+}
+
+function renderSelector(state) {
+  const selector = state && state.latest_selector ? state.latest_selector : {};
+  const hasSelector = !!Object.keys(selector).length;
+  const selected = selector.selected_actions || [];
+  const rejected = selector.rejected_actions || [];
+
+  setText("selector-meta", hasSelector ? selectorMetrics(selector) : "waiting for mainline prompt");
+  renderChipList("selector-selected", selected, false);
+  renderChipList("selector-rejected", rejected, true);
+
+  const reason = selector.selector_reason ||
+    (selector.error ? `Selector error: ${selector.error}` : "") ||
+    (hasSelector ? "Selector inference is running." : "No selector inference yet. Press Play to ask Gemma which futures should be sent to agents.");
+  setText("selector-reason", reason);
+}
+
+function renderInspector(state) {
+  if (!inspectorEl) return;
+  inspectorEl.classList.toggle("open", inspectorOpen);
+  document.body.classList.toggle("inspector-open", inspectorOpen);
+
+  if (!inspectorOpen) {
+    inspectorEmpty.hidden = false;
+    inspectorDetail.hidden = true;
+    if (inspectorTick) inspectorTick.hidden = true;
+    if (inspectorSelectorDisc) inspectorSelectorDisc.hidden = true;
+    return;
+  }
+
+  // Always show selector inference for either selected fork or mainline tick
+  const selector = state && state.latest_selector ? state.latest_selector : {};
+  if (inspectorSelectorDisc) {
+    inspectorSelectorDisc.hidden = false;
+    setText("insp-selector-terminal", selectorTerminalText(selector));
+  }
+
+  if (inspectorMode === "mainline") {
+    inspectorEmpty.hidden = true;
+    inspectorDetail.hidden = true;
+    if (inspectorTick) inspectorTick.hidden = false;
+    const m = (state && state.mainline ? state.mainline : [])
+      .find(item => Number(item.tick) === Number(selectedMainlineTick));
+    const tickLabel = `Tick t${selectedMainlineTick ?? "?"}`;
+    const actionTxt = m && m.action && m.action !== "START" ? actionLabel(m.action) : "Mainline reality";
+    setText("insp-tick-action", `${tickLabel} · ${actionTxt}`);
+    setText("insp-tick-narrative",
+      m && m.action === "START"
+        ? "Starting state. The Future Selector below shows the latest inference Gemma produced."
+        : "The Future Selector inference that produced this committed mainline step is shown below."
+    );
+    return;
+  }
+
+  const f = state && (state.forks || []).find(item => item.id === selectedFutureId);
+  if (!f) {
+    inspectorEmpty.hidden = false;
+    inspectorEmpty.textContent = selectedFutureId
+      ? `Selected future ${selectedFutureId} is not in the current run.`
+      : "No future selected.";
+    inspectorDetail.hidden = true;
+    if (inspectorTick) inspectorTick.hidden = true;
+    return;
+  }
+
+  inspectorEmpty.hidden = true;
+  inspectorDetail.hidden = false;
+  if (inspectorTick) inspectorTick.hidden = true;
+  setText("insp-action", actionLabel(f.action));
+  setText("insp-confidence", confidenceLabel(f.confidence));
+  setText("insp-status-line", statusLine(f, state));
+  setText("insp-narrative", statusNarrative(f, state));
+  setText("insp-why-title", whyTitle(f.status));
+  setText("insp-model", modelName(f, state));
+  setText("insp-model-metrics", modelMetrics(f));
+  setText("insp-terminal", inferenceTerminalText(f, state));
+  setText("insp-stream", prettyJson(detailsPayload(f, state)));
+
+  setList("insp-why", whyBullets(f), item => {
+    const li = document.createElement("li");
+    const mark = document.createElement("span");
+    mark.className = "mark";
+    mark.textContent = statusTone(f.status) === "killed" || statusTone(f.status) === "errored" ? "!" : "✓";
+    const text = document.createElement("span");
+    text.textContent = item;
+    li.append(mark, text);
+    return li;
+  });
+
+  setList("insp-path", pathEntries(f), item => {
+    const li = document.createElement("li");
+    const tick = document.createElement("span");
+    tick.className = "tick";
+    tick.textContent = item.tick;
+    const action = document.createElement("span");
+    action.className = "action";
+    action.textContent = item.action;
+    const outcome = document.createElement("span");
+    outcome.className = "outcome";
+    outcome.textContent = item.outcome;
+    li.append(tick, action, outcome);
+    return li;
+  });
+
+  const status = document.getElementById("insp-status");
+  if (status) {
+    status.textContent = displayFutureStatus(f.status);
+    status.className = `inspector-status ${statusClass(f.status)}`;
+  }
+}
+
+function openInspectorForFuture(f) {
+  selectedFutureId = f.id;
+  inspectorMode = "fork";
+  selectedMainlineTick = null;
+  inspectorOpen = true;
+  renderInspector(lastState);
+  if (lastState) render(lastState);
+}
+
+function openInspectorForMainline(tick) {
+  selectedMainlineTick = tick;
+  inspectorMode = "mainline";
+  selectedFutureId = null;
+  inspectorOpen = true;
+  renderInspector(lastState);
+  if (lastState) render(lastState);
+}
+
+function closeInspector() {
+  inspectorOpen = false;
+  selectedMainlineTick = null;
+  inspectorMode = "fork";
+  renderInspector(lastState);
+  if (lastState) render(lastState);
+}
+
+if (inspectorClose) inspectorClose.addEventListener("click", closeInspector);
+
+function labelTextWidth(text) {
+  return Math.max(24, String(text || "").length * LABEL_CHAR_W);
+}
+
+function labelBox(attrs, text) {
+  const w = labelTextWidth(text);
+  const h = LABEL_H;
+  let left = Number(attrs.x);
+  if (attrs["text-anchor"] === "middle") left -= w / 2;
+  if (attrs["text-anchor"] === "end") left -= w;
+  return { left, right: left + w, top: Number(attrs.y) - h + 3, bottom: Number(attrs.y) + 3 };
+}
+
+function boxesOverlap(a, b) {
+  return !(a.right + LABEL_GAP < b.left ||
+           b.right + LABEL_GAP < a.left ||
+           a.bottom + LABEL_GAP < b.top ||
+           b.bottom + LABEL_GAP < a.top);
+}
+
+function makeLabelPlacer(initialBoxes = []) {
+  const boxes = [...initialBoxes];
+  return function placeLabel(baseAttrs, text, yCandidates = []) {
+    const candidates = yCandidates.length ? yCandidates : [baseAttrs.y];
+    for (const y of candidates) {
+      const attrs = { ...baseAttrs, y };
+      const box = labelBox(attrs, text);
+      if (box.left < 44 || box.right > W - 24 || box.top < 22 || box.bottom > AXIS_Y - 14) continue;
+      if (!boxes.some(existing => boxesOverlap(existing, box))) {
+        boxes.push(box);
+        return attrs;
+      }
+    }
+
+    const attrs = { ...baseAttrs, y: candidates[candidates.length - 1] };
+    boxes.push(labelBox(attrs, text));
+    return attrs;
+  };
+}
+
+function forkLabelBaseAttrs(xEnd, yEnd, text) {
+  const aboveMainline = yEnd < MAIN_Y;
+  const rightX = Math.min(xEnd + 13, W - MARGIN_R - labelTextWidth(text) - 12);
+  const leftX = Math.max(xEnd - 13, MARGIN_L + labelTextWidth(text) + 12);
+  const useLeft = rightX < xEnd + 6;
+  return {
+    x: useLeft ? leftX : rightX,
+    y: yEnd + (aboveMainline ? -12 : 20),
+    "text-anchor": useLeft ? "end" : "start"
+  };
+}
+
+function forkLabelYCandidates(yEnd) {
+  const aboveMainline = yEnd < MAIN_Y;
+  const base = yEnd + (aboveMainline ? -12 : 20);
+  const step = LABEL_H + LABEL_GAP;
+  return aboveMainline
+    ? [base, base - step, base + step, base - step * 2, base + step * 2]
+    : [base, base + step, base - step, base + step * 2, base - step * 2];
+}
+
+function mainlineLabelBaseAttrs(tick, maxTicks, text) {
+  const xPrev = tickX(Math.max(tick - 1, 0), maxTicks);
+  const xNode = tickX(tick, maxTicks);
+  const xMid = (xPrev + xNode) / 2;
+  const textW = labelTextWidth(text);
+  const clampedX = Math.max(MARGIN_L + textW / 2, Math.min(W - MARGIN_R - textW / 2, xMid));
+  return {
+    x: clampedX,
+    y: MAIN_Y - 28,
+    "text-anchor": "middle"
+  };
+}
+
+function mainlineLabelYCandidates(tick) {
+  const step = LABEL_H + LABEL_GAP;
+  const lift = (tick % 2) * 8;
+  return [
+    MAIN_Y - 28 - lift,
+    MAIN_Y - 50 - lift,
+    MAIN_Y + 46 + lift,
+    MAIN_Y - 72 - lift,
+    MAIN_Y + 68 + lift
+  ];
+}
+
+function survivedLabelBaseAttrs(xEnd, text) {
+  const textW = labelTextWidth(text);
+  const placeRight = xEnd < W - MARGIN_R - textW - 30;
+  return {
+    x: placeRight ? xEnd + 24 : xEnd - 24,
+    y: MAIN_Y - 48,
+    "text-anchor": placeRight ? "start" : "end"
+  };
+}
+
+function survivedLabelYCandidates() {
+  return [MAIN_Y - 48, MAIN_Y - 70, MAIN_Y + 54, MAIN_Y - 92, MAIN_Y + 76];
+}
+
+function fixedLabelBoxes(state, maxTicks, nowTick) {
+  const boxes = [
+    labelBox({ x: tickX(nowTick, maxTicks), y: MAIN_Y + 32, "text-anchor": "middle" }, "NOW")
+  ];
+  for (const m of state.mainline) {
+    if (m.action === "START") {
+      boxes.push(labelBox({ x: tickX(m.tick, maxTicks), y: MAIN_Y - 16, "text-anchor": "middle" }, "start"));
+    }
+  }
+  return boxes;
+}
+
+function render(state) {
+  const svg = document.getElementById("map-svg");
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  const maxTicks = state.max_ticks;
+  const nowTick  = state.now_tick;
+  const lookAhead = state.look_ahead;
+  const geometry = buildRealityGeometry(state);
+  const nowPoint = geometry.points.get(nowTick) || { x: tickX(nowTick, maxTicks), y: MAIN_Y };
+  const nowDisplayPoint = getNowDisplayPoint(state, geometry);
+
+  // axis + tick labels
+  svg.appendChild(el("line", { class: "axis", x1: 60, y1: AXIS_Y, x2: W - 30, y2: AXIS_Y }));
+  for (let t = 0; t <= maxTicks; t++) {
+    const x = tickX(t, maxTicks);
+    const isNow = (t === nowTick);
+    svg.appendChild(el("text", {
+      class: isNow ? "tick now" : "tick",
+      x, y: AXIS_Y + 20, "text-anchor": "middle"
+    }, isNow ? `t${t} ◀ now` : `t${t}`));
+  }
+
+  // gutter labels
+  svg.appendChild(el("text", { class: "lbl dim", x: 60, y: 36 }, "WORLD STATE"));
+  svg.appendChild(el("text", { class: "lbl dim", x: W - 30, y: 36, "text-anchor": "end" }, "SAFE ACTION"));
+  svg.appendChild(el("line", { class: "axis", x1: 60, y1: 44, x2: W - 30, y2: 44, "stroke-dasharray": "2 4" }));
+
+  // mainline committed: nodes 0..nowTick
+  if (geometry.segments.length) {
+    const first = state.mainline[0];
+    const firstPoint = geometry.points.get(first.tick) || { x: tickX(0, maxTicks), y: MAIN_Y };
+    let d = `M ${firstPoint.x} ${firstPoint.y}`;
+    for (const segment of geometry.segments) {
+      d += ` ${curveSegment(segment.curve)}`;
+      if (segment.fork) {
+        svg.appendChild(el("path", { class: "survivor-path", d: curveTo(
+          segment.curve.x1, segment.curve.y1, segment.curve.x2, segment.curve.y2
+        ) }));
+      }
+    }
+    svg.appendChild(el("path", { class: "mainline", d }));
+  }
+
+  // future projection: from nowTick to maxTicks (dashed)
+  if (nowTick < maxTicks) {
+    svg.appendChild(el("path", {
+      class: "mainline-future",
+      d: `M ${nowPoint.x} ${nowPoint.y} L ${tickX(maxTicks, maxTicks)} ${nowPoint.y}`
+    }));
+  }
+
+  // forks — compute y once per generation so they never sit on the mainline
+  const yMap = buildForkYMap(state.forks);
+  const placeLabel = makeLabelPlacer(fixedLabelBoxes(state, maxTicks, nowTick));
+  const committedActions = new Set(
+    state.mainline.map(m => `${m.tick}|${normalizeAction(m.action)}`)
+  );
+  const renderedActionLabels = new Set(
+    state.mainline
+      .filter(m => m.action && m.action !== "START")
+      .map(m => `${m.tick}|${normalizeAction(m.action)}`)
+  );
+  for (const f of state.forks) {
+    const xStart = tickX(f.from_tick, maxTicks);
+    const startPoint = geometry.points.get(f.from_tick) || { x: xStart, y: MAIN_Y };
+    let xEnd, yEnd;
+    if (f.status === "survived") {
+      xEnd = tickX(f.from_tick + 1, maxTicks);
+      const selectedPoint = geometry.points.get(f.from_tick + 1);
+      yEnd = selectedPoint && committedActions.has(`${f.from_tick + 1}|${normalizeAction(f.action)}`)
+        ? selectedPoint.y
+        : branchLaneY(f);
+    } else {
+      const advance = Math.max(f.depth, 1) / Math.max(lookAhead, 1);
+      const span = (tickX(f.from_tick + 1, maxTicks) - xStart);
+      xEnd = xStart + span * advance;
+      const targetY = yMap.get(f.id) || branchLaneY(f);
+      yEnd = startPoint.y + (targetY - startPoint.y) * Math.min(advance, 1);
+    }
+    const cls = (f.status === "live") ? "live" : f.status;
+    const discardedVisual = isDiscardedFork(f.status) ? failedBranchVisual(f, nowTick) : null;
+    const forkD = curveTo(startPoint.x, startPoint.y, xEnd, yEnd);
+    const selected = inspectorOpen && selectedFutureId === f.id;
+    const group = el("g", {
+      class: `fork-selectable${discardedVisual ? ` discarded ${discardedVisual.ageClass}` : ""}${selected ? " selected" : ""}`,
+      "data-fork-id": f.id,
+      tabindex: "0",
+      role: "button",
+      "aria-label": `future ${f.id} ${actionLabel(f.action)} ${displayFutureStatus(f.status)}`
+    });
+    group.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openInspectorForFuture(f);
+    });
+    group.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        event.stopPropagation();
+        openInspectorForFuture(f);
+      }
+    });
+    const tooltip = (f.reason || f.predicted_state || statusLine(f, state)).trim();
+    if (tooltip) group.appendChild(el("title", {}, tooltip));
+    group.appendChild(el("path", {
+      class: `fork ${cls}${discardedVisual ? ` discarded ${discardedVisual.ageClass}` : ""}`,
+      d: forkD,
+      ...(discardedVisual ? { style: `opacity: ${discardedVisual.pathOpacity};` } : {})
+    }));
+    group.appendChild(el("path", { class: "fork-hit", d: forkD }));
+
+    if (f.status !== "survived") {
+      group.appendChild(el("circle", {
+        class: `endcap ${cls}${discardedVisual ? ` discarded ${discardedVisual.ageClass}` : ""}`,
+        cx: xEnd,
+        cy: yEnd,
+        r: discardedVisual ? discardedVisual.endcapRadius : 7,
+        ...(discardedVisual ? { style: `opacity: ${discardedVisual.endcapOpacity};` } : {})
+      }));
+      const glyph = ({killed:"✕", stalled:"⚠", looped:"↺", errored:"⨯", live:"·"})[f.status] || "·";
+      const labelColor = ({killed:"coral", stalled:"amber", looped:"violet", errored:"coral", live:"dim"})[f.status] || "dim";
+      // Glyph: tiny, always visible, sits beside the endcap.
+      const glyphY = yEnd < MAIN_Y ? yEnd - 11 : yEnd + 15;
+      group.appendChild(el("text", {
+        class: `fork-glyph ${labelColor}`,
+        x: xEnd, y: glyphY, "text-anchor": "middle",
+        ...(discardedVisual ? { style: `opacity: ${discardedVisual.labelOpacity};` } : {})
+      }, glyph));
+      // Action label: hidden by default, revealed on hover/focus of group.
+      const labelText = clipText(actionLabel(f.action), FORK_LABEL_MAX);
+      const t = el("text", {
+        class: `lbl ${labelColor} fork-label hover-only${discardedVisual ? ` discarded ${discardedVisual.ageClass}` : ""}`,
+        ...placeLabel(forkLabelBaseAttrs(xEnd, yEnd, labelText), labelText, forkLabelYCandidates(yEnd))
+      }, labelText);
+      group.appendChild(t);
+    } else {
+      group.appendChild(el("circle", { class: "node-future", cx: xEnd, cy: yEnd, r: 8 }));
+      const actionKey = `${f.from_tick + 1}|${normalizeAction(f.action)}`;
+      const alreadyCommitted = committedActions.has(actionKey);
+      if (!alreadyCommitted && !renderedActionLabels.has(actionKey)) {
+        const labelText = clipText(`● ${actionLabel(f.action)} ${(f.confidence || 0).toFixed(2)}`, FORK_LABEL_MAX + 5);
+        group.appendChild(el("text", {
+          class: "lbl mint fork-label",
+          ...placeLabel(survivedLabelBaseAttrs(xEnd, labelText), labelText, survivedLabelYCandidates())
+        }, labelText));
+        renderedActionLabels.add(actionKey);
+      }
+    }
+    svg.appendChild(group);
+  }
+
+  // mainline committed nodes (clickable — opens inspector in mainline mode)
+  for (const m of state.mainline) {
+    const point = geometry.points.get(m.tick) || { x: tickX(m.tick, maxTicks), y: MAIN_Y };
+    const x = point.x;
+    const y = point.y;
+    let nodeEl;
+    if (m.tick === nowTick) {
+      nodeEl = el("circle", { class: "node-now", cx: nowDisplayPoint.x, cy: nowDisplayPoint.y, r: 11, style: "cursor:pointer;" });
+      svg.appendChild(nodeEl);
+      svg.appendChild(el("text", {
+        class: "lbl main", x: nowDisplayPoint.x, y: nowDisplayPoint.y + 32, "text-anchor": "middle"
+      }, "NOW"));
+    } else {
+      nodeEl = el("circle", { class: "node-main", cx: x, cy: y, r: 7, style: "cursor:pointer;" });
+      svg.appendChild(nodeEl);
+    }
+    nodeEl.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openInspectorForMainline(m.tick);
+    });
+    if (m.action && m.action !== "START") {
+      const labelText = clipText(actionLabel(m.action), MAINLINE_LABEL_MAX);
+      svg.appendChild(el("text", {
+        class: "lbl mint",
+        ...placeLabel(mainlineLabelBaseAttrs(m.tick, maxTicks, labelText), labelText, mainlineLabelYCandidates(m.tick))
+      }, labelText));
+    } else if (m.action === "START") {
+      svg.appendChild(el("text", {
+        class: "lbl dim", x, y: y - 16, "text-anchor": "middle"
+      }, "start"));
+    }
+  }
+
+  // arrow into SAFE ACTION gutter, only when finished or near end
+  if (state.now_tick >= 1) {
+    svg.appendChild(el("line", {
+      class: "axis", x1: nowPoint.x, y1: nowPoint.y, x2: W - 50, y2: nowPoint.y,
+      stroke: "var(--mint)", "stroke-width": "2", "stroke-dasharray": "6 4"
+    }));
+    svg.appendChild(el("polygon", {
+      points: `${W - 50},${nowPoint.y - 8} ${W - 34},${nowPoint.y} ${W - 50},${nowPoint.y + 8}`,
+      fill: "var(--mint)"
+    }));
+  }
+}
+
+function renderMetrics(state) {
+  const liveCount     = state.forks.filter(f => f.status === "live").length;
+  const survivedCount = state.forks.filter(f => f.status === "survived").length;
+  const killedCount   = state.forks.filter(f => ["killed","looped","errored"].includes(f.status)).length;
+  const stalledCount  = state.forks.filter(f => f.status === "stalled").length;
+
+  document.getElementById("m-tick").textContent     = state.now_tick;
+  document.getElementById("m-max").textContent      = state.max_ticks;
+  document.getElementById("m-look").textContent     = state.look_ahead;
+  document.getElementById("m-fpt").textContent      = state.forks_per_tick;
+  document.getElementById("m-open").textContent     = liveCount;
+  document.getElementById("m-survived").textContent = survivedCount;
+  document.getElementById("m-killed").textContent   = killedCount + stalledCount;
+  document.getElementById("m-tokens").textContent   = (state.meter.tokens || 0).toLocaleString();
+  document.getElementById("m-tps").textContent      = state.meter.tps;
+  document.getElementById("m-elapsed").textContent  = state.meter.elapsed + "s";
+
+  document.getElementById("tile-branches").innerHTML = `${state.forks.length} <small>simulated · ${liveCount} live</small>`;
+  document.getElementById("tile-risk").innerHTML     = `${killedCount + stalledCount} <small>${killedCount} killed · ${stalledCount} stalled</small>`;
+
+  const lastCommit = state.mainline.length ? state.mainline[state.mainline.length - 1] : null;
+  if (lastCommit && lastCommit.action !== "START") {
+    document.getElementById("tile-outcome").innerHTML =
+      `${lastCommit.action} <small>collapse · conf ${lastCommit.confidence}</small>`;
+  } else {
+    document.getElementById("tile-outcome").innerHTML = `— <small>awaiting collapse</small>`;
+  }
+
+  // top-right pills
+  document.getElementById("model-label").textContent =
+    `${(state.provider || "?").toUpperCase()} · ${(state.model || "?").toUpperCase()}`;
+  const rp = document.getElementById("run-pill");
+  if (state.paused) {
+    rp.className = "pill amber"; rp.innerHTML = `<span class="dot"></span>PAUSED`;
+  } else if (state.running) {
+    rp.className = "pill"; rp.innerHTML = `<span class="dot"></span>RUNNING`;
+  } else if (state.finished) {
+    if ((state.stop_reason || "").startsWith("terminal_action")) {
+      rp.className = "pill coral";
+      rp.innerHTML = `<span class="dot"></span>${state.stop_reason.replace("terminal_action:", "")} · STOPPED`;
+    } else if (state.stop_reason === "no_survivor") {
+      rp.className = "pill amber";
+      rp.innerHTML = `<span class="dot"></span>NO SURVIVOR · HALTED`;
+    } else {
+      rp.className = "pill mute";
+      rp.innerHTML = `<span class="dot"></span>${state.stop_reason || "done"}`;
+    }
+  } else {
+    rp.className = "pill mute"; rp.innerHTML = `<span class="dot"></span>idle`;
+  }
+
+  // play/pause button label
+  const playBtn = document.getElementById("play-btn");
+  if (playBtn) {
+    if (state.running && !state.paused) {
+      playBtn.textContent = "⏸ Pause";
+      playBtn.classList.remove("primary");
+    } else {
+      playBtn.textContent = "▶ Play";
+      playBtn.classList.add("primary");
+    }
+  }
+
+  // footer
+  document.getElementById("footer-meta").textContent =
+    `${state.goal || ""}  ·  look-ahead ${state.look_ahead}  ·  forks/tick ${state.forks_per_tick}`;
+}
+
+function renderLog(events) {
+  const log = document.getElementById("log");
+  log.innerHTML = "";
+  // Render newest at top.
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    const line = document.createElement("div");
+    line.className = "line";
+    const cls = ({fork:"fork", kill:"kill", stall:"stall", loop:"loop",
+                  commit:"commit", reset:"reset", error:"error"})[e.tag] || "fork";
+    line.innerHTML = `
+      <span class="ts">${e.ts}</span>
+      <span class="tag ${cls}">${e.tag}</span>
+      <span class="msg" title="${e.msg.replace(/"/g, "&quot;")}">${e.msg}</span>
+    `;
+    log.appendChild(line);
+  }
+}
+
+function logEntryMetrics(entry) {
+  const pieces = [];
+  const tokens = Number(entry.total_tokens_estimate || entry.output_tokens_estimate || entry.prompt_tokens_estimate || 0);
+  const tps = Number(entry.total_tokens_per_second || entry.output_tokens_per_second || 0);
+  const duration = Number(entry.duration_seconds || 0);
+  if (tokens > 0) pieces.push(`${Math.round(tokens).toLocaleString()} tok`);
+  if (tps > 0) pieces.push(`${tps.toFixed(1)} tps`);
+  if (duration > 0) pieces.push(`${duration.toFixed(1)}s`);
+  if (entry.ok === false) pieces.push("error");
+  return pieces.join(" · ") || "-";
+}
+
+function logEntrySummary(entry) {
+  const event = String(entry.event || "log");
+  if (event === "future_selector") {
+    const selected = Array.isArray(entry.selected_actions) ? entry.selected_actions.map(actionLabel).join(", ") : "";
+    return selected
+      ? `selected ${selected}${entry.selector_reason ? ` · ${entry.selector_reason}` : ""}`
+      : (entry.error || "selector prompt recorded");
+  }
+  if (event === "future_probe") {
+    const branch = entry.fork_id || entry.branch_id || "-";
+    const action = actionLabel(entry.action || "?");
+    const outcome = entry.parsed_packet && entry.parsed_packet.outcome ? ` · ${entry.parsed_packet.outcome}` : "";
+    return `${branch} · ${action}${outcome}${entry.error ? ` · ${entry.error}` : ""}`;
+  }
+  if (event === "play_clicked") return "start clicked · snapshot captured";
+  if (event === "pause_clicked") return "pause clicked · snapshot captured";
+  if (event === "reset_clicked") return "reset clicked · new run created";
+  if (event === "config_applied") return "controls applied · new config logged";
+  return clipText(entry.error || entry.stop_reason || entry.selector_reason || entry.reason || entry.message || event, 180);
+}
+
+function evidenceKey(entry, index) {
+  return [
+    entry.logged_at || entry.started_at || "-",
+    entry.event || "log",
+    entry.run_id || "-",
+    entry.fork_id || entry.branch_id || "-",
+    entry.tick ?? "-",
+    index
+  ].join("|");
+}
+
+function evidenceTerminalText(entry) {
+  if (!entry) {
+    return [
+      "RUN_LOG >",
+      "select a backend JSONL row to inspect the full prompt, raw model output, parsed packet, and metrics"
+    ].join("\n");
+  }
+  const prompt = entry.prompt || "";
+  const raw = entry.raw_output || "";
+  const parsed = entry.parsed_packet ? prettyJson(entry.parsed_packet) : "";
+  const lines = [
+    `$ event ${entry.event || "log"}`,
+    `$ run ${entry.run_id || "-"}`,
+    `$ branch ${entry.fork_id || entry.branch_id || "-"}`,
+    `$ tick ${entry.tick ?? "-"}`,
+    `$ model ${prettyName(entry.provider)} · ${prettyName(entry.model)}`,
+    `$ metrics ${logEntryMetrics(entry)}`,
+    `$ logged ${entry.logged_at || "-"}`,
+    "",
+    "PROMPT >",
+    prompt || "No prompt stored for this record.",
+    "",
+    "GEMMA_RAW_OUTPUT >",
+    raw || "No raw model output stored for this record.",
+  ];
+  if (parsed) lines.push("", "PARSED_PACKET >", parsed);
+  if (entry.error) lines.push("", "ERROR >", String(entry.error));
+  lines.push("", "FULL_JSON >", prettyJson(entry));
+  return lines.join("\n");
+}
+
+function selectEvidenceEntry(key) {
+  selectedEvidenceKey = key;
+  const entry = latestEvidenceEntries.find(item => item.__key === key);
+  setText("evidence-detail", evidenceTerminalText(entry));
+  const list = document.getElementById("evidence-list");
+  if (!list) return;
+  for (const row of list.querySelectorAll(".evidence-entry")) {
+    row.classList.toggle("selected", row.dataset.key === key);
+  }
+}
+
+function renderEvidenceLog(payload) {
+  const meta = document.getElementById("evidence-meta");
+  const list = document.getElementById("evidence-list");
+  if (!meta || !list) return;
+  const entries = Array.isArray(payload.entries) ? payload.entries.slice().reverse() : [];
+  latestEvidenceEntries = entries.map((entry, index) => ({ ...entry, __key: evidenceKey(entry, index) }));
+  meta.textContent = `${payload.log_path || "log path unavailable"} · ${entries.length} shown`;
+  list.replaceChildren();
+  if (!latestEvidenceEntries.length) {
+    selectedEvidenceKey = null;
+    setText("evidence-detail", evidenceTerminalText(null));
+    const row = document.createElement("div");
+    row.className = "evidence-entry";
+    for (const text of ["waiting", "tokens · tps · duration", "No backend records yet. Click play or apply & run to create a logged run."]) {
+      const span = document.createElement("span");
+      span.textContent = text;
+      row.appendChild(span);
+    }
+    list.appendChild(row);
+    return;
+  }
+  if (!selectedEvidenceKey || !latestEvidenceEntries.some(entry => entry.__key === selectedEvidenceKey)) {
+    selectedEvidenceKey = latestEvidenceEntries[0].__key;
+  }
+  for (const entry of latestEvidenceEntries.slice(0, 24)) {
+    const row = document.createElement("div");
+    row.className = "evidence-entry";
+    row.dataset.key = entry.__key;
+    row.tabIndex = 0;
+    row.setAttribute("role", "button");
+    row.setAttribute("aria-label", `inspect log record ${entry.event || "log"}`);
+    if (entry.__key === selectedEvidenceKey) row.classList.add("selected");
+    const event = document.createElement("span");
+    event.className = "event";
+    event.textContent = `${entry.logged_at || entry.started_at || "-"} · ${entry.event || "log"}`;
+    const metrics = document.createElement("span");
+    metrics.className = "metrics";
+    metrics.textContent = logEntryMetrics(entry);
+    const summary = document.createElement("span");
+    summary.className = "summary";
+    summary.textContent = logEntrySummary(entry);
+    row.title = entry.prompt || entry.raw_output || logEntrySummary(entry);
+    row.addEventListener("click", () => selectEvidenceEntry(entry.__key));
+    row.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectEvidenceEntry(entry.__key);
+      }
+    });
+    row.append(event, metrics, summary);
+    list.appendChild(row);
+  }
+  setText(
+    "evidence-detail",
+    evidenceTerminalText(latestEvidenceEntries.find(entry => entry.__key === selectedEvidenceKey))
+  );
+}
+
+function renderEvidenceError(message) {
+  const meta = document.getElementById("evidence-meta");
+  const list = document.getElementById("evidence-list");
+  if (meta) meta.textContent = "log endpoint unavailable";
+  latestEvidenceEntries = [];
+  selectedEvidenceKey = null;
+  setText("evidence-detail", [
+    "RUN_LOG >",
+    `log endpoint unavailable: ${message}`
+  ].join("\n"));
+  if (!list) return;
+  list.replaceChildren();
+  const row = document.createElement("div");
+  row.className = "evidence-entry";
+  for (const text of ["unavailable", "-", message]) {
+    const span = document.createElement("span");
+    span.textContent = text;
+    row.appendChild(span);
+  }
+  list.appendChild(row);
+}
+
+function showError(msg) {
+  const b = document.getElementById("err-banner");
+  if (msg) { b.textContent = msg; b.classList.add("show"); }
+  else { b.textContent = ""; b.classList.remove("show"); }
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const state = await r.json();
+    lastState = state;
+    failureStreak = 0;
+    showError(null);
+    render(state);
+    renderMetrics(state);
+    renderSelector(state);
+    renderLog(state.events || []);
+    renderInspector(state);
+
+    const errEvents = (state.events || []).filter(e => e.tag === "error");
+    if (errEvents.length) {
+      const latest = errEvents[errEvents.length - 1];
+      showError("engine error · " + latest.msg);
+    }
+  } catch (e) {
+    failureStreak++;
+    showError("server unreachable — " + e.message);
+    if (connected && failureStreak >= FAILURE_LIMIT) {
+      stopPolling();
+      showSplash("lost connection — " + e.message);
+    }
+  }
+}
+
+async function pollLogs() {
+  try {
+    const r = await fetch("/api/logs?limit=80", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const payload = await r.json();
+    renderEvidenceLog(payload);
+  } catch (e) {
+    renderEvidenceError(e.message || String(e));
+  }
+}
+
+function startPolling() {
+  if (pollTimer != null) return;
+  poll();
+  pollTimer = setInterval(poll, POLL_MS);
+}
+function stopPolling() {
+  if (pollTimer != null) { clearInterval(pollTimer); pollTimer = null; }
+  connected = false;
+}
+
+// ── splash / connect screen ────────────────────────────────────────────
+
+const splash       = document.getElementById("splash");
+const splashErr    = document.getElementById("splash-err");
+const splashTarget = document.getElementById("splash-target");
+const connectBtn   = document.getElementById("connect-btn");
+
+splashTarget.textContent = `${location.origin || "http://127.0.0.1:8762"}/api/state`;
+
+const splashHint = document.getElementById("splash-hint");
+
+function showSplash(message) {
+  splash.classList.remove("hidden");
+  if (message) { splashErr.textContent = message; splashErr.classList.add("show"); }
+  else { splashErr.classList.remove("show"); splashErr.textContent = ""; }
+  connectBtn.disabled = false;
+  connectBtn.textContent = "Connect";
+}
+function hideSplash() { splash.classList.add("hidden"); }
+
+async function tryConnect() {
+  connectBtn.disabled = true;
+  connectBtn.textContent = "Connecting…";
+  splashErr.classList.remove("show");
+  try {
+    const r = await fetch("/api/state", { cache: "no-store" });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    await r.json();
+    connected = true;
+    failureStreak = 0;
+    if (splashHint) splashHint.style.display = "none";
+    hideSplash();
+    startPolling();
+    loadConfigIntoForm();
+  } catch (e) {
+    connectBtn.disabled = false;
+    connectBtn.textContent = "Retry";
+    splashErr.textContent =
+      "couldn't reach the engine — " + e.message;
+    splashErr.classList.add("show");
+    if (splashHint) splashHint.style.display = "block";
+  }
+}
+
+connectBtn.addEventListener("click", tryConnect);
+
+// ── controls ───────────────────────────────────────────────────────────────
+
+const RANGE_FIELDS = [
+  ["ctl-fpt", "lbl-fpt", v => v],
+  ["ctl-look", "lbl-look", v => v],
+  ["ctl-max", "lbl-max", v => v],
+  ["ctl-tick", "lbl-tick", v => Number(v).toFixed(1)],
+  ["ctl-timeout", "lbl-timeout", v => v],
+];
+for (const [inputId, labelId, fmt] of RANGE_FIELDS) {
+  const input = document.getElementById(inputId);
+  const label = document.getElementById(labelId);
+  const sync = () => label.textContent = fmt(input.value);
+  input.addEventListener("input", sync); sync();
+}
+
+function readConfigForm() {
+  return {
+    forks_per_tick:  Number(document.getElementById("ctl-fpt").value),
+    look_ahead:      Number(document.getElementById("ctl-look").value),
+    max_ticks:       Number(document.getElementById("ctl-max").value),
+    tick_seconds:    Number(document.getElementById("ctl-tick").value),
+    call_timeout:    Number(document.getElementById("ctl-timeout").value),
+    autoloop:        document.getElementById("ctl-autoloop").checked,
+    goal:            document.getElementById("ctl-goal").value,
+    seed_state:      document.getElementById("ctl-state").value,
+    allowed_actions: document.getElementById("ctl-actions").value,
+    provider:        document.getElementById("ctl-provider").value,
+    model:           document.getElementById("ctl-model").value,
+    hermes_skill:    document.getElementById("ctl-skill").value,
+  };
+}
+
+function setCfgStatus(text, kind = "") {
+  const el = document.getElementById("cfg-status");
+  el.textContent = text;
+  el.className = "config-status" + (kind ? " " + kind : "");
+}
+
+async function loadConfigIntoForm() {
+  try {
+    const r = await fetch("/api/config", { cache: "no-store" });
+    if (!r.ok) return;
+    const body = await r.json();
+    const c = body.config || body;
+    const setVal = (id, v) => { const e = document.getElementById(id); if (e != null && v != null) e.value = v; };
+    setVal("ctl-fpt", c.forks_per_tick);
+    setVal("ctl-look", c.look_ahead);
+    setVal("ctl-max", c.max_ticks);
+    setVal("ctl-tick", c.tick_seconds);
+    setVal("ctl-timeout", c.call_timeout);
+    document.getElementById("ctl-autoloop").checked = !!c.autoloop;
+    setVal("ctl-goal", c.goal);
+    setVal("ctl-state", c.seed_state);
+    if (Array.isArray(c.allowed_actions)) {
+      setVal("ctl-actions", c.allowed_actions.join(","));
+    }
+    setVal("ctl-provider", c.provider);
+    setVal("ctl-model", c.model);
+    setVal("ctl-skill", c.hermes_skill);
+    for (const [inputId, labelId, fmt] of RANGE_FIELDS) {
+      document.getElementById(labelId).textContent = fmt(document.getElementById(inputId).value);
+    }
+  } catch (e) { /* leave defaults */ }
+}
+
+async function applyConfig() {
+  setCfgStatus("applying…");
+  try {
+    const r = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(readConfigForm()),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || body.ok === false) {
+      throw new Error(body.error || ("HTTP " + r.status));
+    }
+    await fetch("/api/play", { method: "POST" });
+    setCfgStatus("applied · new run started", "ok");
+  } catch (e) {
+    setCfgStatus("apply failed — " + e.message, "err");
+  }
+}
+
+async function doReset() {
+  try {
+    await fetch("/api/reset", { method: "POST" });
+    setCfgStatus("reset · run restarting", "ok");
+  } catch (e) {
+    setCfgStatus("reset failed — " + e.message, "err");
+  }
+}
+
+async function togglePlayPause() {
+  // First-run / idle: apply sidebar config, then start. Otherwise: toggle pause.
+  const idle = !lastState || (!lastState.running && !lastState.paused);
+  if (idle) { await applyConfig(); return; }
+  const endpoint = lastState.paused ? "/api/play" : "/api/pause";
+  try {
+    await fetch(endpoint, { method: "POST" });
+  } catch (e) {
+    showError("play/pause failed — " + e.message);
+  }
+}
+
+document.getElementById("play-btn").addEventListener("click", (e) => {
+  togglePlayPause();
+  // Blur so a following Space keystroke doesn't re-fire the button click event.
+  e.currentTarget.blur();
+});
+document.getElementById("reset-btn").addEventListener("click", (e) => {
+  doReset();
+  e.currentTarget.blur();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.target && /^(input|textarea)$/i.test(e.target.tagName)) return;
+  if (e.key === "Escape" && inspectorOpen) { closeInspector(); return; }
+  if (e.key === " ") { e.preventDefault(); togglePlayPause(); return; }
+  if (e.key.toLowerCase() === "r") doReset();
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) applyConfig();
+});
+
+// Auto-try once on load so a user with the server already running doesn't
+// have to click. If it fails, the splash + Connect button stay visible.
+tryConnect();
+</script>
+
+</body>
+</html>
