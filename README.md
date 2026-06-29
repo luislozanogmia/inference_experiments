@@ -28,14 +28,14 @@ ends, a final Gemma call writes a ~100-word verdict (`SUCCEEDED` /
 the scenario.
 
 There is **no mock and no fallback**. If the Cerebras call fails, the fork
-fails — surfaced in the UI and in the JSONL log.
+fails surfaced in the UI and in the JSONL log.
 
 ## Two files at root
 
 By design the demo is just two files:
 
-- `multiverse_1.py` — engine + asyncio control loop + stdlib HTTP server.
-- `multiverse_1.html` — single-page UI (vanilla JS, dynamic SVG, polls `/api/state`).
+- `multiverse_1.py` engine + asyncio control loop + stdlib HTTP server.
+- `multiverse_1.html` single-page UI (vanilla JS, dynamic SVG, polls `/api/state`).
 
 ## Setup
 
@@ -66,10 +66,10 @@ and the scenario text from the sidebar before pressing Play.
 
 The top metric bar shows:
 
-- `tokens` — exact `(prompt + completion − cached)` across every Cerebras call
+- `tokens` exact `(prompt + completion − cached)` across every Cerebras call
   in the run, read from the response's `usage` field. Not estimated.
-- `tps` — real generation throughput from Cerebras's `time_info.completion_time`
-  (model-side only — excludes queue, prompt eval, network).
+- `tps` real generation throughput from Cerebras's `time_info.completion_time`
+  (model-side only excludes queue, prompt eval, network).
 
 ## Logs
 
@@ -81,7 +81,7 @@ logs/future_shield_backend.jsonl
 
 Each record includes the full prompt, raw model output, parsed packet,
 exact token counts, and timing. The UI's `Run Evidence` panel shows the same
-records — click a row to inspect.
+records click a row to inspect.
 
 ## API surface
 
@@ -111,4 +111,4 @@ POST /api/generate-scenario   ask Gemma to write a 100-word scenario from a seed
 
 ## License
 
-MIT — see `LICENSE`.
+MIT see `LICENSE`.
