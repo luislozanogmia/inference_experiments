@@ -1878,15 +1878,19 @@ function render(state) {
     const baseX = nowDisplayPoint.x;
     const baseY = nowDisplayPoint.y;
     const roomRight = (W - MARGIN_R - 24) - baseX;
-    const roomLeft  = baseX - (MARGIN_L + 24);
-    const fanRight = roomRight >= 110 || roomRight >= roomLeft;
-    const dir = fanRight ? 1 : -1;
+    // Rejected paths are "futures we cut" — they MUST extend into the future
+    // half of the map. Without forcing dir=1, when nowTick == maxTicks the
+    // available right-side room goes negative and stubs would fan backward
+    // into the past, visually contradicting their semantics.
+    const fanRight = true;
+    const dir = 1;
     // Reach into the actual look-ahead cone so cut paths visually project past
     // NOW, and fan each stub to a different x so they don't visually collapse.
     const lookAheadTick = Math.min(maxTicks, nowTick + (state.look_ahead || 2));
     const reachToLookAhead = Math.abs(tickX(lookAheadTick, maxTicks) - baseX);
-    const reachAvailable  = fanRight ? roomRight : roomLeft;
-    const stubXSpan = Math.max(80, Math.min(reachAvailable - 20, reachToLookAhead));
+    // Always reach far enough to feel like a path, even when NOW sits at the
+    // right edge (run finished, roomRight goes ~0 or negative). SVG can clip.
+    const stubXSpan = Math.max(110, Math.min(220, reachToLookAhead || 180));
     const stubXStep = Math.max(18, stubXSpan * 0.18);
     const stubYStep = 42;            // match TRACK_GAP feel — visibly distinct
     const stubYStart = baseY - 50;
