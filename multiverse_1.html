@@ -559,7 +559,7 @@
   }
   .inspector-body { padding: 16px 18px 18px; overflow: auto; }
   .inspector-empty { color: var(--text-mute); font-size: 12.5px; }
-  .inspector-grid { display: grid; gap: 16px; }
+  .inspector-grid:not([hidden]) { display: grid; gap: 16px; }
   .future-hero {
     display: grid; gap: 6px; padding-bottom: 14px; border-bottom: 1px solid var(--rule);
   }
