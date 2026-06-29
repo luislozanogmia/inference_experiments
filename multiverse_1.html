@@ -353,9 +353,14 @@
   /* ── map ── */
   .annot {
     font-family: Inter, system-ui, sans-serif;
-    color: var(--text-mute);
-    font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
-    margin: 18px 0 6px;
+    color: var(--text);
+    font-size: 13px; font-weight: 700; letter-spacing: 0.02em;
+    margin: 22px 0 6px;
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  }
+  .selector-inline-meta {
+    font-weight: 500; font-size: 12px;
+    color: var(--text-mute); letter-spacing: 0;
   }
   .map {
     background: var(--bg-tile); border: 1px solid var(--rule);
@@ -435,6 +440,24 @@
   .fork-selectable:focus-within .fork-label.hover-only,
   .fork-selectable.selected .fork-label.hover-only { opacity: 1; }
   .fork-glyph { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; pointer-events: none; }
+
+  /* Selector-rejected stubs at NOW: visually 'killed before any probe ran'. */
+  .rejected-stub { cursor: help; outline: none; }
+  .rejected-stub-line {
+    stroke: var(--coral); stroke-width: 1.25; fill: none;
+    stroke-dasharray: 2 3; opacity: 0.6;
+  }
+  .rejected-stub-glyph {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; font-weight: 700;
+    fill: var(--coral); opacity: 0.85;
+  }
+  .rejected-stub-label {
+    font-family: 'JetBrains Mono', monospace; font-size: 10.5px;
+    fill: var(--coral); opacity: 0.7;
+    text-decoration: line-through; text-decoration-thickness: 1px;
+  }
+  .rejected-stub:hover .rejected-stub-line { opacity: 1; }
+  .rejected-stub:hover .rejected-stub-label { opacity: 1; }
 
   /* ── event log ── */
   .log {
@@ -769,35 +792,12 @@
     </div>
   </div>
 
-  <div class="selector-panel" aria-label="Future selector inference">
-    <div class="selector-top">
-      <h3>Future Selector</h3>
-      <div id="selector-meta" class="selector-meta">waiting for mainline prompt</div>
-    </div>
-    <div class="selector-grid">
-      <div class="selector-block">
-        <div class="selector-label">selected for probes</div>
-        <div id="selector-selected" class="selector-chips"></div>
-      </div>
-      <div class="selector-block">
-        <div class="selector-label">rejected before probe</div>
-        <div id="selector-rejected" class="selector-chips"></div>
-      </div>
-    </div>
-    <div id="selector-reason" class="selector-reason">No selector inference yet. Press Play to ask Gemma which futures should be sent to agents.</div>
+  <div class="annot">
+    <span>Multiverse Map</span>
+    <span id="selector-inline-meta" class="selector-inline-meta">waiting for selector…</span>
   </div>
-
-  <div class="annot">MAP — mainline reality → future forks → failed branches die → survivor collapses → verified outcome</div>
   <div class="map">
     <svg id="map-svg" viewBox="0 0 1140 440" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
-    <div class="map-legend">
-      <span class="k"><i class="main"></i>mainline (committed)</span>
-      <span class="k"><i class="fork"></i>multiverse fork</span>
-      <span class="k" style="color:var(--coral)">✕ killed · failure state found</span>
-      <span class="k" style="color:var(--amber)">⚠ stalled · weak evidence</span>
-      <span class="k" style="color:var(--violet)">↺ looped · state repeated</span>
-      <span class="k" style="color:var(--mint)">● survivor · collapses into mainline</span>
-    </div>
   </div>
 
   <div class="annot">EVENT STREAM</div>
@@ -1415,17 +1415,21 @@ function renderChipList(id, items, rejected = false) {
 function renderSelector(state) {
   const selector = state && state.latest_selector ? state.latest_selector : {};
   const hasSelector = !!Object.keys(selector).length;
-  const selected = selector.selected_actions || [];
-  const rejected = selector.rejected_actions || [];
-
-  setText("selector-meta", hasSelector ? selectorMetrics(selector) : "waiting for mainline prompt");
-  renderChipList("selector-selected", selected, false);
-  renderChipList("selector-rejected", rejected, true);
-
-  const reason = selector.selector_reason ||
-    (selector.error ? `Selector error: ${selector.error}` : "") ||
-    (hasSelector ? "Selector inference is running." : "No selector inference yet. Press Play to ask Gemma which futures should be sent to agents.");
-  setText("selector-reason", reason);
+  const meta = document.getElementById("selector-inline-meta");
+  if (!meta) return;
+  if (!hasSelector) {
+    meta.textContent = "Selector → waiting for mainline prompt";
+    return;
+  }
+  const selected = (selector.selected_actions || []).length;
+  const rejected = (selector.rejected_actions || []).length;
+  const tokens = Number(selector.total_tokens_estimate || selector.output_tokens_estimate || 0);
+  const parts = [];
+  parts.push(`${selected} picked`);
+  parts.push(`${rejected} cut`);
+  if (tokens > 0) parts.push(`${Math.round(tokens).toLocaleString()} tok`);
+  if (selector.error) parts.push(`error: ${selector.error}`);
+  meta.textContent = `Selector → ${parts.join(" · ")}`;
 }
 
 function renderInspector(state) {
@@ -1843,6 +1847,51 @@ function render(state) {
         class: "lbl dim", x, y: y - 16, "text-anchor": "middle"
       }, "start"));
     }
+  }
+
+  // rejected-by-selector stubs at NOW: each rejected action becomes a tiny
+  // ghost stub fanning above the look-ahead zone — "selector killed this
+  // before any probe ran". Direction flips left when there's no room right.
+  const selector = state.latest_selector || {};
+  const rejectedActions = Array.isArray(selector.rejected_actions) ? selector.rejected_actions : [];
+  if (rejectedActions.length && nowTick <= maxTicks) {
+    const baseX = nowDisplayPoint.x;
+    const baseY = nowDisplayPoint.y;
+    const roomRight = (W - MARGIN_R - 24) - baseX;
+    const roomLeft  = baseX - (MARGIN_L + 24);
+    const fanRight = roomRight >= 110 || roomRight >= roomLeft;
+    const stubXSpan = Math.min(70, Math.max(40, (fanRight ? roomRight : roomLeft) * 0.4));
+    const dir = fanRight ? 1 : -1;
+    const stubYStep = 20;
+    const stubYStart = baseY - 60;
+    rejectedActions.forEach((entry, i) => {
+      const action = (entry && typeof entry === "object") ? (entry.action || "") : String(entry || "");
+      const reason = (entry && typeof entry === "object") ? (entry.reason || "") : "";
+      const xEnd = baseX + dir * stubXSpan;
+      const yEnd = stubYStart - i * stubYStep;
+      const group = el("g", {
+        class: "rejected-stub",
+        tabindex: "0",
+        role: "button",
+        "aria-label": `rejected by selector: ${actionLabel(action)}`
+      });
+      const tooltip = (reason || `Selector rejected ${actionLabel(action)} before any probe ran.`).trim();
+      if (tooltip) group.appendChild(el("title", {}, tooltip));
+      group.appendChild(el("path", {
+        class: "rejected-stub-line",
+        d: curveTo(baseX, baseY, xEnd, yEnd)
+      }));
+      group.appendChild(el("text", {
+        class: "rejected-stub-glyph",
+        x: xEnd, y: yEnd - 7, "text-anchor": "middle"
+      }, "✕"));
+      group.appendChild(el("text", {
+        class: "rejected-stub-label",
+        x: xEnd + dir * 9, y: yEnd + 4,
+        "text-anchor": fanRight ? "start" : "end"
+      }, clipText(actionLabel(action), 16)));
+      svg.appendChild(group);
+    });
   }
 
   // arrow into SAFE ACTION gutter, only when finished or near end
