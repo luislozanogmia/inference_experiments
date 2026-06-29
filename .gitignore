@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.playwright-mcp/
+multiverse_1_html.png
+future_shield_preview.png
+future_shield_loop_preview.png
+logs/
