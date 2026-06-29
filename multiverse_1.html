@@ -68,14 +68,12 @@
   .sidebar h4 {
     font-family: Inter, system-ui, sans-serif;
     color: var(--text); font-size: 13px; font-weight: 700;
-    letter-spacing: 0.02em; text-transform: none;
-    margin: 18px 0 10px; padding-top: 14px;
-    border-top: 1px solid var(--rule);
+    letter-spacing: 0.08em; text-transform: uppercase;
+    margin: 22px 0 12px;
     display: flex; align-items: center; gap: 8px;
   }
   .sidebar h4 .rule { color: var(--mint); }
-  .sidebar h4:first-of-type { border-top: 0; padding-top: 0; }
-  .field { margin: 0 0 10px; }
+  .field { margin: 0 0 14px; }
   .field label {
     display: flex; justify-content: space-between; align-items: center;
     color: var(--text-dim); font-size: 12px; margin-bottom: 4px;
@@ -747,21 +745,21 @@
 
   <h4><span class="rule">▎</span>Scenario</h4>
   <div class="field">
-    <label>goal</label>
-    <textarea id="ctl-goal" rows="2" placeholder="What should the system protect against?">prevent the live system from entering a failure state</textarea>
+    <label>Goal</label>
+    <input id="ctl-goal" type="text" value="prevent the live system from entering a failure state" placeholder="What should the system protect against?">
   </div>
   <div class="field">
-    <label>Scenario</label>
+    <label>Topic</label>
     <input id="ctl-scenario-seed" type="text" placeholder="seed concept (e.g. rocket flying mid-run to moon)" value="rocket flying mid-run to moon">
     <div class="scenario-row">
       <button id="btn-scenario-gen" type="button" class="btn ghost">🎲 Generate</button>
-      <button id="btn-scenario-accept" type="button" class="btn primary">✓ Accept</button>
+      <button id="btn-scenario-accept" type="button" class="btn ghost">✓ Accept</button>
     </div>
     <div id="scenario-status" class="scenario-status"></div>
     <textarea id="ctl-state" rows="8" placeholder="Click Generate to write a scenario, or describe one here…">embodied autonomous system operating near a danger zone; recent visual frames show a human hand and fragile object near the action boundary; state signals indicate rising proximity risk and delayed intervention risk</textarea>
   </div>
   <div class="field">
-    <label>allowed actions</label>
+    <label>Allowed actions</label>
     <input id="ctl-actions" type="text" value="CONTINUE,SAFE_STOP,DIVERT_PATH,SLOW_DOWN,OBSERVE_MORE,ESCALATE_TO_HUMAN">
   </div>
   <input id="ctl-provider" type="hidden" value="cerebras">
@@ -2477,6 +2475,13 @@ function setScenarioStatus(text, kind = "") {
   el.className = "scenario-status" + (kind ? " " + kind : "");
 }
 
+function markScenarioDirty(dirty) {
+  const btn = document.getElementById("btn-scenario-accept");
+  if (!btn) return;
+  btn.classList.toggle("primary", !!dirty);
+  btn.classList.toggle("ghost", !dirty);
+}
+
 async function generateScenario() {
   const btn = document.getElementById("btn-scenario-gen");
   const seed = (document.getElementById("ctl-scenario-seed").value || "").trim()
@@ -2495,6 +2500,7 @@ async function generateScenario() {
     }
     document.getElementById("ctl-state").value = body.scenario || "";
     setScenarioStatus("generated · edit then accept", "ok");
+    markScenarioDirty(true);
   } catch (e) {
     setScenarioStatus("generate failed — " + e.message, "err");
   } finally {
@@ -2515,10 +2521,14 @@ async function acceptScenario() {
       throw new Error(body.error || ("HTTP " + r.status));
     }
     setScenarioStatus("scenario accepted · ready to play", "ok");
+    markScenarioDirty(false);
   } catch (e) {
     setScenarioStatus("accept failed — " + e.message, "err");
   }
 }
+
+document.getElementById("ctl-state").addEventListener("input", () => markScenarioDirty(true));
+document.getElementById("ctl-scenario-seed").addEventListener("input", () => markScenarioDirty(true));
 
 document.getElementById("btn-scenario-gen").addEventListener("click", (e) => {
   generateScenario();
