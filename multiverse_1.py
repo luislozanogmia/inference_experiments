@@ -1166,9 +1166,13 @@ class BackgroundRunner:
 
     def reset(self) -> None:
         with self._reset_lock:
+            # Capture the multiverse we want to cancel BEFORE we replace it.
+            # call_soon_threadsafe queues the callback for the asyncio loop —
+            # by the time it fires, self.multiverse may already point at a
+            # fresh instance, and we'd cancel the new run instead of the old.
+            old_mv = self.multiverse
             if self._loop is not None:
-                self._loop.call_soon_threadsafe(self._cancel_current)
-            # reset returns to a clean paused state — user must press play to run
+                self._loop.call_soon_threadsafe(old_mv.request_stop)
             self._paused.set()
             self.config = MultiverseConfig(**{**asdict(self.config),
                                               "seed": self.config.seed + 1})
@@ -1214,8 +1218,11 @@ class BackgroundRunner:
                     value = coerce_bool(value)
                 current[key] = value
             new_config = MultiverseConfig(**current)
+            # Cancel the OLD multiverse explicitly so the queued stop callback
+            # doesn't fire on the new one we're about to create.
+            old_mv = self.multiverse
             if self._loop is not None:
-                self._loop.call_soon_threadsafe(self._cancel_current)
+                self._loop.call_soon_threadsafe(old_mv.request_stop)
             self.config = new_config
             self.multiverse = Multiverse(new_config)
             if self._paused.is_set():

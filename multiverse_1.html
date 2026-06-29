@@ -1880,14 +1880,21 @@ function render(state) {
     const roomRight = (W - MARGIN_R - 24) - baseX;
     const roomLeft  = baseX - (MARGIN_L + 24);
     const fanRight = roomRight >= 110 || roomRight >= roomLeft;
-    const stubXSpan = Math.min(70, Math.max(40, (fanRight ? roomRight : roomLeft) * 0.4));
     const dir = fanRight ? 1 : -1;
-    const stubYStep = 20;
-    const stubYStart = baseY - 60;
+    // Reach into the actual look-ahead cone so cut paths visually project past
+    // NOW, and fan each stub to a different x so they don't visually collapse.
+    const lookAheadTick = Math.min(maxTicks, nowTick + (state.look_ahead || 2));
+    const reachToLookAhead = Math.abs(tickX(lookAheadTick, maxTicks) - baseX);
+    const reachAvailable  = fanRight ? roomRight : roomLeft;
+    const stubXSpan = Math.max(80, Math.min(reachAvailable - 20, reachToLookAhead));
+    const stubXStep = Math.max(18, stubXSpan * 0.18);
+    const stubYStep = 42;            // match TRACK_GAP feel — visibly distinct
+    const stubYStart = baseY - 50;
     rejectedActions.forEach((entry, i) => {
       const action = (entry && typeof entry === "object") ? (entry.action || "") : String(entry || "");
       const reason = (entry && typeof entry === "object") ? (entry.reason || "") : "";
-      const xEnd = baseX + dir * stubXSpan;
+      // Per-index x so the three Bezier curves visibly diverge rather than overlap.
+      const xEnd = baseX + dir * (stubXSpan - i * stubXStep);
       const yEnd = stubYStart - i * stubYStep;
       const group = el("g", {
         class: "rejected-stub",
@@ -1999,10 +2006,18 @@ function renderMetrics(state) {
       playBtn.classList.add("primary");
     }
     // Once we've seen the engine truly catch up to our intent, drop the lock early.
+    // For "play" we wait until something VISIBLE has happened (a tick committed
+    // or a fork opened), not just running=true — otherwise the user sees no map
+    // movement, the lock expires, and the next click is interpreted as a Pause.
     if (intentActive) {
-      const matched = playIntentWants === "play"
-        ? (state.running && !state.paused)
-        : state.paused;
+      let matched;
+      if (playIntentWants === "play") {
+        const tickProgressed = (state.now_tick || 0) > 0;
+        const forksOpen = (state.forks || []).some(f => f.status === "live");
+        matched = state.running && !state.paused && (tickProgressed || forksOpen);
+      } else {
+        matched = state.paused;
+      }
       if (matched) playIntentUntil = 0;
     }
   }
@@ -2400,7 +2415,11 @@ async function doReset() {
 let playIntentUntil = 0;
 let playIntentWants = null; // "play" | "pause" | null
 
-function lockPlayIntent(kind, ms = 1500) {
+function lockPlayIntent(kind, ms) {
+  // Play intent must outlive the first selector call + first probe so the user
+  // can't fat-finger a pause before the map even moves. Pause intent only needs
+  // to outlive the next poll (400ms) — keep it shorter.
+  if (ms == null) ms = (kind === "play") ? 7000 : 1200;
   playIntentWants = kind;
   playIntentUntil = Date.now() + ms;
 }
