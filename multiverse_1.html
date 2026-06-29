@@ -44,12 +44,18 @@
     padding: 24px 28px 18px;
     background: var(--bg-soft); border: 1px solid var(--rule);
     border-radius: 12px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column;
+    max-height: calc(100vh - 36px); overflow: hidden;
+    min-height: 0;
   }
+  .page > * { flex: 0 0 auto; min-height: 0; }
+  .page > .map { min-height: 280px; }
+  .page > .log { flex: 1 1 auto; min-height: 80px; }
   .sidebar {
     padding: 18px 18px 16px;
     background: var(--bg-soft); border: 1px solid var(--rule);
     border-radius: 12px; box-shadow: var(--shadow);
-    position: sticky; top: 18px; align-self: start;
+    position: sticky; top: 18px; align-self: stretch;
     max-height: calc(100vh - 36px); overflow-y: auto;
   }
   .sidebar h3 {
@@ -114,6 +120,32 @@
   }
   .config-status.ok { color: var(--mint); }
   .config-status.err { color: var(--coral); }
+
+  .scenario-gen { margin-top: 8px; display: grid; gap: 6px; }
+  .scenario-gen input[type="text"] {
+    width: 100%; padding: 7px 9px; font: 12px/1.4 'Inter', system-ui, sans-serif;
+    background: var(--panel-soft); border: 1px solid var(--rule);
+    border-radius: 6px; color: var(--text);
+  }
+  .scenario-gen input[type="text"]:focus {
+    outline: none; border-color: var(--mint); box-shadow: 0 0 0 2px var(--mint-glow);
+  }
+  .scenario-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .scenario-row button {
+    padding: 7px 8px; font: 600 12px 'Inter', system-ui, sans-serif;
+    letter-spacing: 0.04em; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--rule); background: #EFECE4; color: var(--text);
+  }
+  .scenario-row button.primary {
+    background: var(--mint-dim); color: var(--mint); border-color: var(--mint);
+  }
+  .scenario-row button:hover { filter: brightness(1.1); }
+  .scenario-row button:disabled { opacity: 0.55; cursor: progress; }
+  .scenario-status {
+    font-size: 11px; color: var(--text-mute); min-height: 14px; font-style: italic;
+  }
+  .scenario-status.ok  { color: var(--mint); font-style: normal; }
+  .scenario-status.err { color: var(--coral); font-style: normal; }
 
   /* ── header ── */
   .header { display: flex; align-items: center; justify-content: space-between; padding: 0 0 14px; }
@@ -464,7 +496,7 @@
     margin-top: 18px; padding-top: 12px;
     border-top: 1px solid var(--rule);
     display: flex; flex-direction: column; gap: 4px; font-size: 12.5px;
-    max-height: 220px; overflow: auto;
+    overflow: auto;
   }
   .log .line { display: grid; grid-template-columns: 70px 80px 1fr; gap: 12px; align-items: center; }
   .log .ts { color: var(--text-mute); }
@@ -685,7 +717,6 @@
 <aside class="sidebar" aria-label="Multiverse controls">
   <h3><span class="rule">▎</span>Controls</h3>
 
-  <h4><span class="rule">▎</span>Run</h4>
   <div class="field">
     <label>how many futures at once? <b id="lbl-fpt">3</b></label>
     <input id="ctl-fpt" type="range" min="1" max="5" step="1" value="3">
@@ -695,12 +726,12 @@
     <input id="ctl-look" type="range" min="1" max="5" step="1" value="2">
   </div>
   <div class="field">
-    <label>how many steps total? <b id="lbl-max">6</b></label>
-    <input id="ctl-max" type="range" min="1" max="12" step="1" value="6">
+    <label>how many steps total? <b id="lbl-max">8</b></label>
+    <input id="ctl-max" type="range" min="1" max="20" step="1" value="8">
   </div>
   <div class="field">
-    <label>delay between loop steps (s) <b id="lbl-tick">0.1</b></label>
-    <input id="ctl-tick" type="range" min="0" max="2" step="0.1" value="0.1">
+    <label>delay between loop steps (s) <b id="lbl-tick">0.6</b></label>
+    <input id="ctl-tick" type="range" min="0" max="2" step="0.1" value="0.6">
   </div>
   <div class="field">
     <label>max wait per Gemma call (s) <b id="lbl-timeout">30</b></label>
@@ -716,30 +747,26 @@
   <h4><span class="rule">▎</span>Scenario</h4>
   <div class="field">
     <label>goal</label>
-    <input id="ctl-goal" type="text" value="prevent the live system from entering a failure state">
+    <textarea id="ctl-goal" rows="2" placeholder="What should the system protect against?">prevent the live system from entering a failure state</textarea>
   </div>
   <div class="field">
-    <label>Seed world state</label>
-    <textarea id="ctl-state" rows="4" placeholder="Describe the situation the system is observing right now…">embodied autonomous system operating near a danger zone; recent visual frames show a human hand and fragile object near the action boundary; state signals indicate rising proximity risk and delayed intervention risk</textarea>
+    <label>Scenario</label>
+    <textarea id="ctl-state" rows="8" placeholder="Describe the situation the system is observing right now…">embodied autonomous system operating near a danger zone; recent visual frames show a human hand and fragile object near the action boundary; state signals indicate rising proximity risk and delayed intervention risk</textarea>
+    <div class="scenario-gen">
+      <input id="ctl-scenario-seed" type="text" placeholder="seed concept (e.g. rocket flying mid-run to moon)" value="rocket flying mid-run to moon">
+      <div class="scenario-row">
+        <button id="btn-scenario-gen" type="button" class="btn ghost">🎲 Generate</button>
+        <button id="btn-scenario-accept" type="button" class="btn primary">✓ Accept</button>
+      </div>
+      <div id="scenario-status" class="scenario-status"></div>
+    </div>
   </div>
   <div class="field">
     <label>allowed actions (CSV)</label>
     <input id="ctl-actions" type="text" value="CONTINUE,SAFE_STOP,DIVERT_PATH,SLOW_DOWN,OBSERVE_MORE,ESCALATE_TO_HUMAN">
   </div>
-
-  <h4><span class="rule">▎</span>Inference</h4>
-  <div class="field">
-    <label>provider</label>
-    <input id="ctl-provider" type="text" value="cerebras">
-  </div>
-  <div class="field">
-    <label>model</label>
-    <input id="ctl-model" type="text" value="gemma-4-31b">
-  </div>
-  <div class="field">
-    <label>hermes skill (blank = direct)</label>
-    <input id="ctl-skill" type="text" value="">
-  </div>
+  <input id="ctl-provider" type="hidden" value="cerebras">
+  <input id="ctl-model" type="hidden" value="gemma-4-31b">
 
   <div id="cfg-status" class="config-status"></div>
 </aside>
@@ -847,12 +874,6 @@
           <div id="insp-model-metrics">-</div>
         </div>
       </section>
-
-      <details class="inspector-disclosure" open>
-        <summary>Model Inference Terminal</summary>
-        <pre id="insp-terminal" class="inspector-stream terminal-stream"></pre>
-        <div class="inspector-note">Conversation view: exact Future Shield prompt sent to Gemma, followed by Gemma's raw response for this branch.</div>
-      </details>
 
       <details class="inspector-disclosure">
         <summary>All Probe Details</summary>
@@ -1490,7 +1511,6 @@ function renderInspector(state) {
   setText("insp-why-title", whyTitle(f.status));
   setText("insp-model", modelName(f, state));
   setText("insp-model-metrics", modelMetrics(f));
-  setText("insp-terminal", inferenceTerminalText(f, state));
   setText("insp-stream", prettyJson(detailsPayload(f, state)));
 
   setList("insp-why", whyBullets(f), item => {
@@ -1958,15 +1978,32 @@ function renderMetrics(state) {
     rp.className = "pill mute"; rp.innerHTML = `<span class="dot"></span>idle`;
   }
 
-  // play/pause button label
+  // play/pause button label — honors user intent during the click→start window
+  // so a fast run (Cerebras direct can finish in <2s) doesn't snap the label
+  // back to "Play" before the user even sees they clicked it.
   const playBtn = document.getElementById("play-btn");
   if (playBtn) {
-    if (state.running && !state.paused) {
-      playBtn.textContent = "⏸ Pause";
+    const now = Date.now();
+    const intentActive = playIntentUntil > now;
+    let showPause;
+    if (intentActive) {
+      showPause = playIntentWants === "play";  // we asked for Play; pretend we're running
+    } else {
+      showPause = state.running && !state.paused;
+    }
+    if (showPause) {
+      playBtn.textContent = intentActive && !state.running ? "▶ Starting…" : "⏸ Pause";
       playBtn.classList.remove("primary");
     } else {
       playBtn.textContent = "▶ Play";
       playBtn.classList.add("primary");
+    }
+    // Once we've seen the engine truly catch up to our intent, drop the lock early.
+    if (intentActive) {
+      const matched = playIntentWants === "play"
+        ? (state.running && !state.paused)
+        : state.paused;
+      if (matched) playIntentUntil = 0;
     }
   }
 
@@ -2291,7 +2328,6 @@ function readConfigForm() {
     allowed_actions: document.getElementById("ctl-actions").value,
     provider:        document.getElementById("ctl-provider").value,
     model:           document.getElementById("ctl-model").value,
-    hermes_skill:    document.getElementById("ctl-skill").value,
   };
 }
 
@@ -2321,7 +2357,6 @@ async function loadConfigIntoForm() {
     }
     setVal("ctl-provider", c.provider);
     setVal("ctl-model", c.model);
-    setVal("ctl-skill", c.hermes_skill);
     for (const [inputId, labelId, fmt] of RANGE_FIELDS) {
       document.getElementById(labelId).textContent = fmt(document.getElementById(inputId).value);
     }
@@ -2356,11 +2391,46 @@ async function doReset() {
   }
 }
 
+// Intent lock: when the user clicks Play, we commit to "Play" semantics for
+// ~1.5s no matter how fast the engine flips states. A direct-Cerebras run can
+// finish in <2s, which used to make the very next click read "Pause" → click
+// again to actually pause → click again to play. Now: rapid clicks while a
+// Play intent is active stay idempotent (all Play), and pausing requires a
+// click that lands AFTER the intent window when the run is genuinely going.
+let playIntentUntil = 0;
+let playIntentWants = null; // "play" | "pause" | null
+
+function lockPlayIntent(kind, ms = 1500) {
+  playIntentWants = kind;
+  playIntentUntil = Date.now() + ms;
+}
+
 async function togglePlayPause() {
-  // First-run / idle: apply sidebar config, then start. Otherwise: toggle pause.
-  const idle = !lastState || (!lastState.running && !lastState.paused);
-  if (idle) { await applyConfig(); return; }
-  const endpoint = lastState.paused ? "/api/play" : "/api/pause";
+  const now = Date.now();
+  const intentActive = playIntentUntil > now;
+  const fresh = !lastState;
+
+  // If we just told the engine "play", any second click within the intent
+  // window is treated as "still want play" — never an accidental pause.
+  if (intentActive && playIntentWants === "play") {
+    try { await fetch("/api/play", { method: "POST" }); } catch (e) {
+      showError("play failed — " + e.message);
+    }
+    return;
+  }
+
+  // Fresh page or fully-idle multiverse → apply sidebar config then start.
+  const cleanIdle = fresh || (!lastState.running && !lastState.paused && !lastState.finished);
+  if (cleanIdle) {
+    lockPlayIntent("play");
+    await applyConfig();
+    return;
+  }
+
+  // Paused or finished → Play. Running → Pause.
+  const wantPlay = lastState.paused || lastState.finished;
+  lockPlayIntent(wantPlay ? "play" : "pause");
+  const endpoint = wantPlay ? "/api/play" : "/api/pause";
   try {
     await fetch(endpoint, { method: "POST" });
   } catch (e) {
@@ -2375,6 +2445,65 @@ document.getElementById("play-btn").addEventListener("click", (e) => {
 });
 document.getElementById("reset-btn").addEventListener("click", (e) => {
   doReset();
+  e.currentTarget.blur();
+});
+
+function setScenarioStatus(text, kind = "") {
+  const el = document.getElementById("scenario-status");
+  if (!el) return;
+  el.textContent = text;
+  el.className = "scenario-status" + (kind ? " " + kind : "");
+}
+
+async function generateScenario() {
+  const btn = document.getElementById("btn-scenario-gen");
+  const seed = (document.getElementById("ctl-scenario-seed").value || "").trim()
+            || "rocket flying mid-run to moon";
+  btn.disabled = true;
+  setScenarioStatus("Gemma is writing…");
+  try {
+    const r = await fetch("/api/generate-scenario", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ seed }),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || body.ok === false) {
+      throw new Error(body.error || ("HTTP " + r.status));
+    }
+    document.getElementById("ctl-state").value = body.scenario || "";
+    setScenarioStatus("generated · edit then accept", "ok");
+  } catch (e) {
+    setScenarioStatus("generate failed — " + e.message, "err");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function acceptScenario() {
+  setScenarioStatus("saving…");
+  try {
+    const r = await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(readConfigForm()),
+    });
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || body.ok === false) {
+      throw new Error(body.error || ("HTTP " + r.status));
+    }
+    setScenarioStatus("scenario accepted · ready to play", "ok");
+  } catch (e) {
+    setScenarioStatus("accept failed — " + e.message, "err");
+  }
+}
+
+document.getElementById("btn-scenario-gen").addEventListener("click", (e) => {
+  generateScenario();
+  e.currentTarget.blur();
+});
+document.getElementById("btn-scenario-accept").addEventListener("click", (e) => {
+  acceptScenario();
   e.currentTarget.blur();
 });
 

@@ -6,8 +6,9 @@ Each fork either dies on a predicted problem, stalls on weak evidence,
 loops on a repeated state, or survives. The preferred survivor commits to the
 mainline, unfinished alternatives are killed, and the present advances.
 
-Real Cerebras inference through the local `hermes` CLI. No mock, no fallback.
-If the model call fails, the fork fails — and that surfaces in the UI and the log.
+Real Cerebras inference over a persistent HTTPS connection (OpenAI-compatible
+chat/completions endpoint). No mock, no fallback. If the model call fails,
+the fork fails — and that surfaces in the UI and the log.
 
 Run:
     python multiverse_1.py                # serve at http://127.0.0.1:8762
@@ -18,9 +19,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import http.client
 import json
 import mimetypes
 import os
+import socket
 import sys
 import threading
 import time
@@ -163,13 +166,13 @@ SEED_STATE = (
 class MultiverseConfig:
     forks_per_tick: int = 3
     look_ahead: int = 2
-    max_ticks: int = 6
-    tick_seconds: float = 0.1
-    hermes_exe: str = "hermes"
-    hermes_skill: str = ""
-    hermes_max_turns: int = 1
+    max_ticks: int = 8
+    tick_seconds: float = 0.6
     provider: str = "cerebras"
     model: str = "gemma-4-31b"
+    cerebras_endpoint: str = "https://api.cerebras.ai/v1/chat/completions"
+    max_output_tokens: int = 800
+    temperature: float = 0.3
     goal: str = "prevent the live system from entering a failure state"
     seed_state: str = SEED_STATE
     allowed_actions: list[str] = field(default_factory=lambda: list(DEFAULT_ALLOWED_ACTIONS))
@@ -183,15 +186,17 @@ class TokenMeter:
     started_at: float = field(default_factory=time.monotonic)
     tokens: int = 0
     calls: int = 0
+    inference_seconds: float = 0.0  # sum of actual model call durations only
 
-    def add(self, text: str) -> None:
+    def add(self, text: str, duration_seconds: float = 0.0) -> None:
         self.calls += 1
         self.tokens += estimate_tokens(text)
+        self.inference_seconds += duration_seconds
 
     @property
     def tps(self) -> float:
-        elapsed = max(time.monotonic() - self.started_at, 0.001)
-        return self.tokens / elapsed
+        # Divide by inference time only — excludes idle time, pauses, autoloop delays
+        return self.tokens / max(self.inference_seconds, 0.001)
 
     @property
     def elapsed(self) -> float:
@@ -329,7 +334,7 @@ class Multiverse:
                 "meter": {
                     "tokens": self.meter.tokens,
                     "calls": self.meter.calls,
-                    "tps": round(self.meter.tokens / max(self._effective_elapsed(), 0.001), 1),
+                    "tps": round(self.meter.tps, 1),
                     "elapsed": round(self._effective_elapsed(), 1),
                 },
             }
@@ -522,9 +527,7 @@ class Multiverse:
             "cancelled": True,
             "provider": self.config.provider,
             "model": self.config.model,
-            "hermes_exe": self.config.hermes_exe,
-            "hermes_skill": self.config.hermes_skill,
-            "hermes_max_turns": self.config.hermes_max_turns,
+            "endpoint": self.config.cerebras_endpoint,
             "action": fork.action,
             "probe_depth": probe_depth,
             "previous_state": fork.latest_probe.get("previous_state") or previous_state,
@@ -567,9 +570,7 @@ class Multiverse:
             "started_at": started_at,
             "provider": self.config.provider,
             "model": self.config.model,
-            "hermes_exe": self.config.hermes_exe,
-            "hermes_skill": self.config.hermes_skill,
-            "hermes_max_turns": self.config.hermes_max_turns,
+            "endpoint": self.config.cerebras_endpoint,
             "requested_futures": requested,
             "allowed_actions": list(self.config.allowed_actions),
             "previous_state": previous_state,
@@ -587,14 +588,13 @@ class Multiverse:
         }
         raw = ""
         try:
-            raw = await call_hermes(
-                hermes_exe=self.config.hermes_exe,
-                hermes_skill=self.config.hermes_skill,
-                hermes_max_turns=self.config.hermes_max_turns,
-                provider=self.config.provider,
+            raw = await call_cerebras(
+                endpoint=self.config.cerebras_endpoint,
                 model=self.config.model,
                 prompt=prompt,
                 timeout=self.config.call_timeout,
+                max_output_tokens=self.config.max_output_tokens,
+                temperature=self.config.temperature,
             )
             duration = time.perf_counter() - started_perf
             output_tokens = estimate_tokens(raw)
@@ -622,7 +622,7 @@ class Multiverse:
             }
             append_run_log(selector_record)
             self.latest_selector = dict(selector_record)
-            self.meter.add(raw)
+            self.meter.add(raw, duration)
             self._event(
                 "selector",
                 f"t{current.index} selector → " + " · ".join(selected),
@@ -747,9 +747,7 @@ class Multiverse:
             "started_at": started_at,
             "provider": self.config.provider,
             "model": self.config.model,
-            "hermes_exe": self.config.hermes_exe,
-            "hermes_skill": self.config.hermes_skill,
-            "hermes_max_turns": self.config.hermes_max_turns,
+            "endpoint": self.config.cerebras_endpoint,
             "action": action,
             "probe_depth": probe_depth,
             "previous_state": previous_state,
@@ -767,14 +765,13 @@ class Multiverse:
             "total_tokens_per_second": 0.0,
         }
         try:
-            raw = await call_hermes(
-                hermes_exe=self.config.hermes_exe,
-                hermes_skill=self.config.hermes_skill,
-                hermes_max_turns=self.config.hermes_max_turns,
-                provider=self.config.provider,
+            raw = await call_cerebras(
+                endpoint=self.config.cerebras_endpoint,
                 model=self.config.model,
                 prompt=prompt,
                 timeout=self.config.call_timeout,
+                max_output_tokens=self.config.max_output_tokens,
+                temperature=self.config.temperature,
             )
             duration = time.perf_counter() - started_perf
             output_tokens = estimate_tokens(raw)
@@ -793,7 +790,7 @@ class Multiverse:
             }
             append_run_log(probe_record)
             fork.latest_probe = dict(probe_record)
-            self.meter.add(raw)
+            self.meter.add(raw, duration)
             return packet
         except asyncio.CancelledError:
             duration = time.perf_counter() - started_perf
@@ -842,47 +839,160 @@ class Multiverse:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Hermes bridge + JSON helpers
+# Cerebras direct bridge (OpenAI-compatible /v1/chat/completions, keep-alive)
 # ─────────────────────────────────────────────────────────────────────────────
 
-async def call_hermes(
-    hermes_exe: str,
-    hermes_skill: str,
-    hermes_max_turns: int,
-    provider: str,
+# Per-thread connection cache, keyed by (host, port). HTTPSConnection is not
+# thread-safe so we never share across threads — every worker thread gets its
+# own keep-alive socket. The event loop runs in one background thread, but
+# asyncio.to_thread() may dispatch to the default ThreadPoolExecutor which is
+# multi-worker, so we key by thread id to be safe.
+_CONN_CACHE: dict[tuple[int, str, int], http.client.HTTPSConnection] = {}
+_CONN_LOCK = threading.Lock()
+
+
+def _get_conn(host: str, port: int, timeout: float) -> http.client.HTTPSConnection:
+    key = (threading.get_ident(), host, port)
+    with _CONN_LOCK:
+        conn = _CONN_CACHE.get(key)
+        if conn is None:
+            conn = http.client.HTTPSConnection(host, port, timeout=timeout)
+            _CONN_CACHE[key] = conn
+        else:
+            conn.timeout = timeout
+        return conn
+
+
+def _drop_conn(host: str, port: int) -> None:
+    key = (threading.get_ident(), host, port)
+    with _CONN_LOCK:
+        conn = _CONN_CACHE.pop(key, None)
+    if conn is not None:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+def _post_cerebras_blocking(
+    endpoint: str,
+    api_key: str,
+    payload: dict[str, Any],
+    timeout: float,
+) -> str:
+    split = urlsplit(endpoint)
+    if split.scheme != "https" or not split.hostname:
+        raise RuntimeError(f"cerebras endpoint must be https://...: {endpoint}")
+    host = split.hostname
+    port = split.port or 443
+    path = split.path or "/v1/chat/completions"
+    body = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": f"Bearer {api_key}",
+        "Connection": "keep-alive",
+        "Content-Length": str(len(body)),
+    }
+    for attempt in (1, 2):
+        conn = _get_conn(host, port, timeout)
+        try:
+            conn.request("POST", path, body=body, headers=headers)
+            resp = conn.getresponse()
+            data = resp.read()
+        except (http.client.BadStatusLine,
+                http.client.RemoteDisconnected,
+                ConnectionResetError,
+                BrokenPipeError,
+                socket.timeout,
+                OSError) as exc:
+            _drop_conn(host, port)
+            if attempt == 1 and not isinstance(exc, socket.timeout):
+                continue
+            if isinstance(exc, socket.timeout):
+                raise TimeoutError(f"cerebras request exceeded {timeout:.1f}s") from None
+            raise RuntimeError(f"cerebras transport error: {exc}") from exc
+        if resp.status >= 400:
+            _drop_conn(host, port)
+            raise RuntimeError(
+                f"cerebras http {resp.status}: "
+                f"{data.decode('utf-8', errors='replace')[:500]}"
+            )
+        try:
+            packet = json.loads(data.decode("utf-8"))
+        except Exception as exc:
+            raise RuntimeError(f"cerebras returned non-json: {exc}") from exc
+        choices = packet.get("choices") or []
+        if not choices:
+            raise RuntimeError(f"cerebras returned no choices: {data[:300]!r}")
+        message = choices[0].get("message") or {}
+        content = message.get("content")
+        if not isinstance(content, str):
+            raise RuntimeError(f"cerebras returned no text content: {data[:300]!r}")
+        return content.strip()
+    raise RuntimeError("cerebras request failed after retry")
+
+
+SCENARIO_PROMPT_TEMPLATE = """You write vivid, concrete safety scenarios for an autonomous
+system. Produce exactly one paragraph, around 100 words, present tense, third person.
+
+Seed concept: {seed}
+
+The paragraph must:
+- describe what the system is observing RIGHT NOW (sensor frames, telemetry, audio)
+- name at least one fragile object, vulnerable person, or critical asset nearby
+- show why the next action matters within seconds
+- be self-contained (no titles, no bullets, no preamble, no closing remarks)
+
+Output only the paragraph. No surrounding text."""
+
+
+def generate_scenario_sync(config: MultiverseConfig, seed: str) -> str:
+    api_key = os.environ.get("CEREBRAS_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("CEREBRAS_API_KEY env var is not set")
+    payload = {
+        "model": config.model,
+        "messages": [
+            {"role": "user", "content": SCENARIO_PROMPT_TEMPLATE.format(seed=seed)},
+        ],
+        "max_tokens": 320,
+        "temperature": 0.9,
+        "stream": False,
+    }
+    text = _post_cerebras_blocking(
+        config.cerebras_endpoint, api_key, payload, config.call_timeout
+    )
+    return text.strip()
+
+
+async def call_cerebras(
+    endpoint: str,
     model: str,
     prompt: str,
     timeout: float,
+    max_output_tokens: int,
+    temperature: float,
 ) -> str:
-    command = [
-        hermes_exe, "chat",
-        "-q", prompt,
-        "-Q",
-        "--provider", provider,
-        "-m", model,
-        "--max-turns", str(hermes_max_turns),
-    ]
-    if hermes_skill.strip():
-        command[2:2] = ["-s", hermes_skill.strip()]
-    process = await asyncio.create_subprocess_exec(
-        *command,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    api_key = os.environ.get("CEREBRAS_API_KEY", "").strip()
+    if not api_key:
+        raise RuntimeError("CEREBRAS_API_KEY env var is not set")
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": int(max_output_tokens),
+        "temperature": float(temperature),
+        "stream": False,
+    }
     try:
-        stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=timeout)
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                _post_cerebras_blocking, endpoint, api_key, payload, timeout
+            ),
+            timeout=timeout + 5.0,
+        )
     except asyncio.TimeoutError:
-        process.kill()
-        await process.communicate()
-        raise TimeoutError(f"{hermes_exe} exceeded {timeout:.1f}s") from None
-    except asyncio.CancelledError:
-        process.kill()
-        await process.communicate()
-        raise
-    if process.returncode != 0:
-        raise RuntimeError(stderr.decode("utf-8", errors="replace").strip()
-                           or f"{hermes_exe} exited {process.returncode}")
-    return strip_session_footer(stdout.decode("utf-8", errors="replace").strip())
+        raise TimeoutError(f"cerebras call exceeded {timeout:.1f}s") from None
 
 
 def strip_session_footer(text: str) -> str:
@@ -1037,6 +1147,12 @@ class BackgroundRunner:
             if self._paused.is_set():
                 self._paused.clear()
                 self.multiverse.resume_clock()
+            # Reflect "running" immediately so the UI pill stops showing "idle"
+            # during the first hermes/Cerebras cold-start (subprocess spawn +
+            # provider connect + first-token latency can be several seconds).
+            # multiverse.run() will reassert this once the asyncio loop picks
+            # it up; the finally block there resets it cleanly on completion.
+            self.multiverse.running = True
 
     def pause(self) -> None:
         if not self._paused.is_set():
@@ -1073,7 +1189,7 @@ class BackgroundRunner:
                     if not value:
                         continue
                 if key in ("forks_per_tick", "look_ahead", "max_ticks",
-                           "hermes_max_turns", "seed"):
+                           "max_output_tokens", "seed"):
                     value = int(value)
                     if key == "forks_per_tick":
                         action_count = len(current.get("allowed_actions") or [])
@@ -1082,16 +1198,18 @@ class BackgroundRunner:
                         value = clamp_int(value, 1, 20)
                     elif key == "max_ticks":
                         value = clamp_int(value, 1, 200)
-                    elif key == "hermes_max_turns":
-                        value = clamp_int(value, 1, 20)
+                    elif key == "max_output_tokens":
+                        value = clamp_int(value, 16, 8192)
                     elif key == "seed":
                         value = clamp_int(value, 0)
-                if key in ("tick_seconds", "call_timeout"):
+                if key in ("tick_seconds", "call_timeout", "temperature"):
                     value = float(value)
                     if key == "tick_seconds":
                         value = clamp_float(value, 0.0, 30.0)
                     elif key == "call_timeout":
                         value = clamp_float(value, 2.0, 600.0)
+                    elif key == "temperature":
+                        value = clamp_float(value, 0.0, 2.0)
                 if key == "autoloop":
                     value = coerce_bool(value)
                 current[key] = value
@@ -1174,8 +1292,7 @@ class FutureShieldHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "provider": config.provider,
                 "model": config.model,
-                "hermes_exe": config.hermes_exe,
-                "hermes_skill": config.hermes_skill,
+                "endpoint": config.cerebras_endpoint,
                 "log_path": str(RUN_LOG_PATH),
             })
             return
@@ -1258,6 +1375,31 @@ class FutureShieldHandler(BaseHTTPRequestHandler):
             })
             self._send_json({"ok": True, "config": applied})
             return
+        if path == "/api/generate-scenario":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                body = self.rfile.read(length).decode("utf-8") if length else "{}"
+                params = json.loads(body or "{}")
+                if not isinstance(params, dict):
+                    raise ValueError("body must be a JSON object")
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"ok": False, "error": f"invalid request: {exc}"}, status=400)
+                return
+            seed = str(params.get("seed") or "rocket flying mid-run to moon").strip()
+            runner: BackgroundRunner = self.server.runner  # type: ignore[attr-defined]
+            try:
+                scenario = generate_scenario_sync(runner.config, seed)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json({"ok": False, "error": f"scenario gen failed: {exc}"}, status=502)
+                return
+            append_run_log({
+                "event": "scenario_generated",
+                "run_id": runner.multiverse.run_id,
+                "seed": seed,
+                "scenario": scenario,
+            })
+            self._send_json({"ok": True, "seed": seed, "scenario": scenario})
+            return
         self.send_error(404, "Not found")
 
     def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
@@ -1298,7 +1440,7 @@ def serve_html(config: MultiverseConfig, host: str, port: int) -> None:
     server.runner = runner            # type: ignore[attr-defined]
     stamp = time.strftime("%Y-%m-%d %H:%M:%S")
     print(f"{stamp}  Future Shield -> http://{host}:{port}/")
-    print(f"{stamp}  provider={config.provider}  model={config.model}  skill={config.hermes_skill}")
+    print(f"{stamp}  provider={config.provider}  model={config.model}  endpoint={config.cerebras_endpoint}")
     print(f"{stamp}  forks/tick={config.forks_per_tick}  look-ahead={config.look_ahead}  "
           f"max-ticks={config.max_ticks}")
     print(
@@ -1326,13 +1468,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--forks-per-tick", type=int, default=3)
     parser.add_argument("--look-ahead", type=int, default=2)
-    parser.add_argument("--max-ticks", type=int, default=6)
-    parser.add_argument("--tick-seconds", type=float, default=0.1)
-    parser.add_argument("--hermes-exe", default=os.environ.get("HERMES_EXE", "hermes"))
-    parser.add_argument("--hermes-skill", default=os.environ.get("HERMES_SKILL", ""))
-    parser.add_argument("--hermes-max-turns", type=int, default=1)
+    parser.add_argument("--max-ticks", type=int, default=8)
+    parser.add_argument("--tick-seconds", type=float, default=0.6)
     parser.add_argument("--provider", default=os.environ.get("HERMES_PROVIDER", "cerebras"))
     parser.add_argument("--model", default=os.environ.get("HERMES_MODEL", "gemma-4-31b"))
+    parser.add_argument(
+        "--cerebras-endpoint",
+        default=os.environ.get(
+            "CEREBRAS_ENDPOINT", "https://api.cerebras.ai/v1/chat/completions"
+        ),
+    )
+    parser.add_argument("--max-output-tokens", type=int, default=800)
+    parser.add_argument("--temperature", type=float, default=0.3)
     parser.add_argument("--goal", default="prevent the live system from entering a failure state")
     parser.add_argument("--seed-state", default=SEED_STATE)
     parser.add_argument("--allowed-actions", default=",".join(DEFAULT_ALLOWED_ACTIONS))
@@ -1356,11 +1503,11 @@ def config_from_args(args: argparse.Namespace) -> MultiverseConfig:
         look_ahead=max(1, args.look_ahead),
         max_ticks=max(1, args.max_ticks),
         tick_seconds=max(0.0, args.tick_seconds),
-        hermes_exe=args.hermes_exe,
-        hermes_skill=args.hermes_skill,
-        hermes_max_turns=max(1, args.hermes_max_turns),
         provider=args.provider,
         model=args.model,
+        cerebras_endpoint=args.cerebras_endpoint,
+        max_output_tokens=max(16, args.max_output_tokens),
+        temperature=max(0.0, min(2.0, args.temperature)),
         goal=args.goal,
         seed_state=args.seed_state,
         allowed_actions=parse_actions(args.allowed_actions),
