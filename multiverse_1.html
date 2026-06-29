@@ -45,7 +45,10 @@
     background: var(--bg-soft); border: 1px solid var(--rule);
     border-radius: 12px; box-shadow: var(--shadow);
     display: flex; flex-direction: column;
-    max-height: calc(100vh - 36px); overflow: hidden;
+    /* Shell has 28px top/bottom margin — leave a matching gap so the page
+       never overflows the viewport. Same calc used by .sidebar so all three
+       columns (sidebar, page, inspector) bottom-align at y = 100vh - 28. */
+    max-height: calc(100vh - 56px); overflow: hidden;
     min-height: 0;
   }
   .page > * { flex: 0 0 auto; min-height: 0; }
@@ -55,8 +58,8 @@
     padding: 18px 18px 16px;
     background: var(--bg-soft); border: 1px solid var(--rule);
     border-radius: 12px; box-shadow: var(--shadow);
-    position: sticky; top: 18px; align-self: stretch;
-    max-height: calc(100vh - 36px); overflow-y: auto;
+    position: sticky; top: 28px; align-self: stretch;
+    max-height: calc(100vh - 56px); overflow-y: auto;
   }
   .sidebar h3 {
     font-family: Inter, system-ui, sans-serif;
