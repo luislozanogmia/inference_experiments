@@ -27,7 +27,8 @@
     --violet-dim:#E4E0FB;
     --shadow:    0 1px 0 #1A18141A, 0 10px 24px #1A18141A;
   }
-  html, body { background: var(--bg); margin: 0; padding: 0; color: var(--text); }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body { background: var(--bg); margin: 0; padding: 0; color: var(--text); height: 100%; overflow: hidden; }
   body {
     font-family: 'JetBrains Mono','Cascadia Code', ui-monospace, Menlo, Consolas, monospace;
     font-size: 13.5px; line-height: 1.55; -webkit-font-smoothing: antialiased;
@@ -45,21 +46,22 @@
     background: var(--bg-soft); border: 1px solid var(--rule);
     border-radius: 12px; box-shadow: var(--shadow);
     display: flex; flex-direction: column;
-    /* Shell has 28px top/bottom margin — leave a matching gap so the page
-       never overflows the viewport. Same calc used by .sidebar so all three
-       columns (sidebar, page, inspector) bottom-align at y = 100vh - 28. */
-    max-height: calc(100vh - 56px); overflow: hidden;
+    /* Hard height (not max-height) so flex children with `flex: 1 1 0` truly
+       shrink to fit. Matches the right inspector's fixed top:28/bottom:28
+       envelope so all three columns bottom-align at y = 100vh - 28. */
+    height: calc(100vh - 56px); overflow: hidden;
     min-height: 0;
   }
   .page > * { flex: 0 0 auto; min-height: 0; }
   .page > .map { min-height: 280px; }
-  .page > .log { flex: 1 1 auto; min-height: 80px; }
+  .page > .log { flex: 1 1 auto; min-height: 60px; }
   .sidebar {
     padding: 18px 18px 16px;
     background: var(--bg-soft); border: 1px solid var(--rule);
     border-radius: 12px; box-shadow: var(--shadow);
     position: sticky; top: 28px; align-self: stretch;
-    max-height: calc(100vh - 56px); overflow-y: auto;
+    height: calc(100vh - 56px); overflow-y: auto;
+    min-height: 0;
   }
   .sidebar h3 {
     font-family: Inter, system-ui, sans-serif;
@@ -174,10 +176,12 @@
   .btn:hover { background: #FFE3CC; border-color: var(--mint); color: var(--mint); }
 
   .metricbar {
-    display: flex; flex-wrap: wrap; gap: 18px;
+    display: flex; flex-wrap: nowrap; gap: 14px;
     color: var(--text-dim); font-size: 12.5px;
     padding: 0 0 16px; border-bottom: 1px solid var(--rule);
+    overflow: hidden; white-space: nowrap;
   }
+  .metricbar > span { flex: 0 0 auto; }
   .metricbar b { color: var(--text); font-weight: 600; }
   .sep { color: var(--text-mute); }
 
@@ -794,30 +798,12 @@
     <span>forks open <b id="m-open">0</b></span><span class="sep">·</span>
     <span>survived <b id="m-survived">0</b></span><span class="sep">·</span>
     <span>killed <b id="m-killed">0</b></span><span class="sep">·</span>
-    <span>tokens <b id="m-tokens">0</b></span><span class="sep">·</span>
-    <span>tps <b id="m-tps">0</b></span><span class="sep">·</span>
+    <span title="exact total tokens billed by Cerebras (prompt + completion), minus prompt-cache hits, summed across all forks + mainline">tokens <b id="m-tokens">0</b></span><span class="sep">·</span>
+    <span title="real generation TPS: completion_tokens / time_info.completion_time reported by Cerebras (model-side only, excludes queue/prompt/network)">tps <b id="m-tps">0</b></span><span class="sep">·</span>
     <span>elapsed <b id="m-elapsed">0s</b></span>
   </div>
 
   <div id="err-banner" class="err-banner"></div>
-
-  <div class="tiles">
-    <div class="tile">
-      <div class="gutter"></div>
-      <div class="label">FUTURE PROBES</div>
-      <div id="tile-branches" class="value accent">0 <small>simulated</small></div>
-    </div>
-    <div class="tile coral">
-      <div class="gutter"></div>
-      <div class="label">BRANCH OUTCOMES</div>
-      <div id="tile-risk" class="value danger">0 <small>rejected</small></div>
-    </div>
-    <div class="tile">
-      <div class="gutter"></div>
-      <div class="label">SURVIVOR / VERIFY</div>
-      <div id="tile-outcome" class="value accent">— <small>awaiting collapse</small></div>
-    </div>
-  </div>
 
   <div class="annot">
     <span>Multiverse Map</span>
@@ -1954,17 +1940,6 @@ function renderMetrics(state) {
   document.getElementById("m-tokens").textContent   = (state.meter.tokens || 0).toLocaleString();
   document.getElementById("m-tps").textContent      = state.meter.tps;
   document.getElementById("m-elapsed").textContent  = state.meter.elapsed + "s";
-
-  document.getElementById("tile-branches").innerHTML = `${state.forks.length} <small>simulated · ${liveCount} live</small>`;
-  document.getElementById("tile-risk").innerHTML     = `${killedCount + stalledCount} <small>${killedCount} killed · ${stalledCount} stalled</small>`;
-
-  const lastCommit = state.mainline.length ? state.mainline[state.mainline.length - 1] : null;
-  if (lastCommit && lastCommit.action !== "START") {
-    document.getElementById("tile-outcome").innerHTML =
-      `${lastCommit.action} <small>collapse · conf ${lastCommit.confidence}</small>`;
-  } else {
-    document.getElementById("tile-outcome").innerHTML = `— <small>awaiting collapse</small>`;
-  }
 
   // top-right pills
   document.getElementById("model-label").textContent =

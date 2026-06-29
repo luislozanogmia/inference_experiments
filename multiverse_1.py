@@ -184,19 +184,43 @@ class MultiverseConfig:
 @dataclass(slots=True)
 class TokenMeter:
     started_at: float = field(default_factory=time.monotonic)
-    tokens: int = 0
+    # Exact counts from Cerebras `usage` field (sum across every call).
+    prompt_tokens: int = 0          # total prompt tokens billed (incl. cached)
+    cached_tokens: int = 0          # prompt tokens served from cache (subtract for "fresh")
+    completion_tokens: int = 0      # tokens the model actually generated
     calls: int = 0
-    inference_seconds: float = 0.0  # sum of actual model call durations only
+    # Real generation time from Cerebras `time_info.completion_time`
+    # (model-only, excludes queue/prompt/network). Used for true TPS.
+    completion_time: float = 0.0
 
-    def add(self, text: str, duration_seconds: float = 0.0) -> None:
+    def add_exact(
+        self,
+        prompt_tokens: int,
+        cached_tokens: int,
+        completion_tokens: int,
+        completion_time: float,
+    ) -> None:
         self.calls += 1
-        self.tokens += estimate_tokens(text)
-        self.inference_seconds += duration_seconds
+        self.prompt_tokens += int(prompt_tokens)
+        self.cached_tokens += int(cached_tokens)
+        self.completion_tokens += int(completion_tokens)
+        self.completion_time += float(completion_time)
+
+    @property
+    def total_tokens(self) -> int:
+        return self.prompt_tokens + self.completion_tokens
+
+    @property
+    def fresh_tokens(self) -> int:
+        # Tokens we actually paid Cerebras to process — exclude prompt-cache hits.
+        return max(0, self.total_tokens - self.cached_tokens)
 
     @property
     def tps(self) -> float:
-        # Divide by inference time only — excludes idle time, pauses, autoloop delays
-        return self.tokens / max(self.inference_seconds, 0.001)
+        # Real generation TPS = completion tokens / model-side generation time.
+        # Excludes queue, prompt eval, and network — this matches the headline
+        # number Cerebras advertises for Gemma on their hardware.
+        return self.completion_tokens / max(self.completion_time, 1e-6)
 
     @property
     def elapsed(self) -> float:
@@ -332,9 +356,17 @@ class Multiverse:
                 "forks": [f.to_dict() for f in self.forks],
                 "events": [e.to_dict() for e in list(self.events)[-32:]],
                 "meter": {
-                    "tokens": self.meter.tokens,
+                    # Backward-compat: "tokens" = fresh (non-cached) total tokens
+                    "tokens": self.meter.fresh_tokens,
+                    "prompt_tokens": self.meter.prompt_tokens,
+                    "completion_tokens": self.meter.completion_tokens,
+                    "cached_tokens": self.meter.cached_tokens,
+                    "total_tokens": self.meter.total_tokens,
+                    "fresh_tokens": self.meter.fresh_tokens,
                     "calls": self.meter.calls,
+                    # Real generation TPS from Cerebras time_info.completion_time.
                     "tps": round(self.meter.tps, 1),
+                    "completion_time": round(self.meter.completion_time, 3),
                     "elapsed": round(self._effective_elapsed(), 1),
                 },
             }
@@ -588,7 +620,7 @@ class Multiverse:
         }
         raw = ""
         try:
-            raw = await call_cerebras(
+            result = await call_cerebras(
                 endpoint=self.config.cerebras_endpoint,
                 model=self.config.model,
                 prompt=prompt,
@@ -597,7 +629,12 @@ class Multiverse:
                 temperature=self.config.temperature,
             )
             duration = time.perf_counter() - started_perf
-            output_tokens = estimate_tokens(raw)
+            raw = result["content"]
+            api_prompt = result["prompt_tokens"]
+            api_completion = result["completion_tokens"]
+            api_cached = result["cached_tokens"]
+            api_completion_time = result["completion_time"]
+            api_total_time = result["total_time"]
             packet = parse_any_json(raw)
             selected = normalize_selector_actions(
                 packet.get("selected_actions"),
@@ -615,14 +652,21 @@ class Multiverse:
                 "rejected_actions": packet.get("rejected_actions", []),
                 "selector_reason": str(packet.get("selector_reason", "")).strip(),
                 "needs_joint_info": bool(packet.get("needs_joint_info", False)),
-                "output_tokens_estimate": output_tokens,
-                "total_tokens_estimate": prompt_tokens + output_tokens,
-                "output_tokens_per_second": output_tokens / max(duration, 0.001),
-                "total_tokens_per_second": (prompt_tokens + output_tokens) / max(duration, 0.001),
+                "prompt_tokens": api_prompt,
+                "completion_tokens": api_completion,
+                "cached_tokens": api_cached,
+                "total_tokens": api_prompt + api_completion,
+                "fresh_tokens": max(0, api_prompt + api_completion - api_cached),
+                "completion_time": api_completion_time,
+                "total_time_api": api_total_time,
+                "completion_tps": api_completion / max(api_completion_time, 1e-6),
             }
             append_run_log(selector_record)
             self.latest_selector = dict(selector_record)
-            self.meter.add(raw, duration)
+            self.meter.add_exact(
+                api_prompt, api_cached, api_completion,
+                api_completion_time if api_completion_time > 0 else duration,
+            )
             self._event(
                 "selector",
                 f"t{current.index} selector → " + " · ".join(selected),
@@ -764,8 +808,9 @@ class Multiverse:
             "total_tokens_estimate": prompt_tokens,
             "total_tokens_per_second": 0.0,
         }
+        raw = ""
         try:
-            raw = await call_cerebras(
+            result = await call_cerebras(
                 endpoint=self.config.cerebras_endpoint,
                 model=self.config.model,
                 prompt=prompt,
@@ -774,7 +819,12 @@ class Multiverse:
                 temperature=self.config.temperature,
             )
             duration = time.perf_counter() - started_perf
-            output_tokens = estimate_tokens(raw)
+            raw = result["content"]
+            api_prompt = result["prompt_tokens"]
+            api_completion = result["completion_tokens"]
+            api_cached = result["cached_tokens"]
+            api_completion_time = result["completion_time"]
+            api_total_time = result["total_time"]
             packet = parse_any_json(raw)
             probe_record = {
                 **log_base,
@@ -783,14 +833,21 @@ class Multiverse:
                 "duration_seconds": duration,
                 "raw_output": raw,
                 "parsed_packet": packet,
-                "output_tokens_estimate": output_tokens,
-                "total_tokens_estimate": prompt_tokens + output_tokens,
-                "output_tokens_per_second": output_tokens / max(duration, 0.001),
-                "total_tokens_per_second": (prompt_tokens + output_tokens) / max(duration, 0.001),
+                "prompt_tokens": api_prompt,
+                "completion_tokens": api_completion,
+                "cached_tokens": api_cached,
+                "total_tokens": api_prompt + api_completion,
+                "fresh_tokens": max(0, api_prompt + api_completion - api_cached),
+                "completion_time": api_completion_time,
+                "total_time_api": api_total_time,
+                "completion_tps": api_completion / max(api_completion_time, 1e-6),
             }
             append_run_log(probe_record)
             fork.latest_probe = dict(probe_record)
-            self.meter.add(raw, duration)
+            self.meter.add_exact(
+                api_prompt, api_cached, api_completion,
+                api_completion_time if api_completion_time > 0 else duration,
+            )
             return packet
         except asyncio.CancelledError:
             duration = time.perf_counter() - started_perf
@@ -879,7 +936,7 @@ def _post_cerebras_blocking(
     api_key: str,
     payload: dict[str, Any],
     timeout: float,
-) -> str:
+) -> dict[str, Any]:
     split = urlsplit(endpoint)
     if split.scheme != "https" or not split.hostname:
         raise RuntimeError(f"cerebras endpoint must be https://...: {endpoint}")
@@ -929,7 +986,20 @@ def _post_cerebras_blocking(
         content = message.get("content")
         if not isinstance(content, str):
             raise RuntimeError(f"cerebras returned no text content: {data[:300]!r}")
-        return content.strip()
+        usage = packet.get("usage") or {}
+        time_info = packet.get("time_info") or {}
+        prompt_details = usage.get("prompt_tokens_details") or {}
+        return {
+            "content": content.strip(),
+            "prompt_tokens": int(usage.get("prompt_tokens") or 0),
+            "completion_tokens": int(usage.get("completion_tokens") or 0),
+            "total_tokens": int(usage.get("total_tokens") or 0),
+            "cached_tokens": int(prompt_details.get("cached_tokens") or 0),
+            "queue_time": float(time_info.get("queue_time") or 0.0),
+            "prompt_time": float(time_info.get("prompt_time") or 0.0),
+            "completion_time": float(time_info.get("completion_time") or 0.0),
+            "total_time": float(time_info.get("total_time") or 0.0),
+        }
     raise RuntimeError("cerebras request failed after retry")
 
 
@@ -960,10 +1030,10 @@ def generate_scenario_sync(config: MultiverseConfig, seed: str) -> str:
         "temperature": 0.9,
         "stream": False,
     }
-    text = _post_cerebras_blocking(
+    result = _post_cerebras_blocking(
         config.cerebras_endpoint, api_key, payload, config.call_timeout
     )
-    return text.strip()
+    return result["content"]
 
 
 async def call_cerebras(
@@ -973,7 +1043,7 @@ async def call_cerebras(
     timeout: float,
     max_output_tokens: int,
     temperature: float,
-) -> str:
+) -> dict[str, Any]:
     api_key = os.environ.get("CEREBRAS_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("CEREBRAS_API_KEY env var is not set")
