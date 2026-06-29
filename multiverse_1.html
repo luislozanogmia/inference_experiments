@@ -538,6 +538,61 @@
   }
   .err-banner.show { display: block; }
 
+  .summary-overlay {
+    position: fixed; inset: 0; background: rgba(26,24,20,0.55);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; padding: 32px;
+  }
+  .summary-overlay.show { display: flex; }
+  .summary-card {
+    background: var(--bg-soft); border: 1px solid var(--rule);
+    border-radius: 14px; box-shadow: 0 1px 0 #1A18141A, 0 32px 80px #1A18143A;
+    max-width: 640px; width: 100%; padding: 28px 32px 24px;
+    font-family: Inter, system-ui, sans-serif;
+  }
+  .summary-card .verdict-row {
+    display: flex; align-items: baseline; justify-content: space-between;
+    gap: 12px; margin-bottom: 6px;
+  }
+  .summary-card .verdict {
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    font-size: 22px; font-weight: 700; letter-spacing: 0.06em;
+  }
+  .summary-card .verdict.succeeded { color: var(--mint); }
+  .summary-card .verdict.crashed   { color: var(--coral); }
+  .summary-card .verdict.stalled   { color: var(--amber); }
+  .summary-card .verdict.inconclusive { color: var(--text-mute); }
+  .summary-card .verdict-meta {
+    color: var(--text-mute); font-size: 12.5px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  .summary-card h2 {
+    margin: 0 0 14px; font-size: 13px; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; color: var(--text);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  .summary-card p.summary-body {
+    margin: 0 0 18px; font-size: 14.5px; line-height: 1.6; color: var(--text);
+  }
+  .summary-card .summary-stats {
+    display: flex; gap: 18px; flex-wrap: wrap;
+    color: var(--text-mute); font-size: 12px;
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    border-top: 1px solid var(--rule); padding-top: 12px;
+  }
+  .summary-card .summary-stats b { color: var(--text); font-weight: 600; }
+  .summary-card .summary-actions {
+    display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px;
+  }
+  .summary-card .summary-actions button {
+    font: inherit; font-weight: 700; letter-spacing: 0.05em;
+    padding: 8px 16px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--rule); background: #EFECE4; color: var(--text);
+  }
+  .summary-card .summary-actions button.primary {
+    background: var(--mint-dim); color: var(--mint); border-color: var(--mint);
+  }
+
   /* ── selected future inspector ───────────────────────────────────────── */
   .future-inspector {
     position: fixed; top: 28px; right: 20px; bottom: 28px; z-index: 20;
@@ -1173,6 +1228,7 @@ function statusLine(f, state) {
 }
 
 function statusNarrative(f, state) {
+  if (f.recap && f.recap.trim()) return f.recap.trim();
   const reason = f.reason ? ` ${f.reason}` : "";
   switch (statusTone(f.status)) {
     case "survived":
@@ -1199,6 +1255,9 @@ function whyTitle(status) {
 }
 
 function whyBullets(f) {
+  if (Array.isArray(f.why_points) && f.why_points.length) {
+    return f.why_points.map(s => String(s).trim()).filter(Boolean);
+  }
   switch (statusTone(f.status)) {
     case "survived":
       return ["avoided failure boundary", "preserved reversible action", "improved state over time", "no risk detected across probe"];
@@ -1468,11 +1527,15 @@ function renderInspector(state) {
     const tickLabel = `Tick t${selectedMainlineTick ?? "?"}`;
     const actionTxt = m && m.action && m.action !== "START" ? actionLabel(m.action) : "Mainline reality";
     setText("insp-tick-action", `${tickLabel} · ${actionTxt}`);
-    setText("insp-tick-narrative",
-      m && m.action === "START"
-        ? "Starting state. The Future Selector below shows the latest inference Gemma produced."
-        : "The Future Selector inference that produced this committed mainline step is shown below."
-    );
+    let tickNarrative;
+    if (m && m.action === "START") {
+      tickNarrative = "Starting state. The Future Selector below shows the latest inference Gemma produced.";
+    } else if (m && m.recap && m.recap.trim()) {
+      tickNarrative = m.recap.trim();
+    } else {
+      tickNarrative = "The Future Selector inference that produced this committed mainline step is shown below.";
+    }
+    setText("insp-tick-narrative", tickNarrative);
     return;
   }
 
@@ -1673,6 +1736,7 @@ function fixedLabelBoxes(state, maxTicks, nowTick) {
 }
 
 function render(state) {
+  try { if (typeof window.__futureShieldOnState === "function") window.__futureShieldOnState(state); } catch (e) {}
   const svg = document.getElementById("map-svg");
   while (svg.firstChild) svg.removeChild(svg.firstChild);
 
@@ -2528,6 +2592,87 @@ document.addEventListener("keydown", (e) => {
 // Auto-try once on load so a user with the server already running doesn't
 // have to click. If it fails, the splash + Connect button stay visible.
 tryConnect();
+</script>
+
+<div id="summary-overlay" class="summary-overlay" role="dialog" aria-modal="true" aria-labelledby="summary-verdict">
+  <div class="summary-card">
+    <div class="verdict-row">
+      <div id="summary-verdict" class="verdict inconclusive">—</div>
+      <div id="summary-meta" class="verdict-meta">—</div>
+    </div>
+    <h2>Run Report</h2>
+    <p id="summary-body" class="summary-body">awaiting summary…</p>
+    <div class="summary-stats">
+      <span>iterations <b id="summary-iters">0</b></span>
+      <span>tokens <b id="summary-tokens">0</b></span>
+      <span>tps <b id="summary-tps">0</b></span>
+      <span>stop reason <b id="summary-stop">—</b></span>
+    </div>
+    <div class="summary-actions">
+      <button id="summary-close" type="button">Close</button>
+      <button id="summary-reset" class="primary" type="button">New run</button>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  const overlay = document.getElementById("summary-overlay");
+  const closeBtn = document.getElementById("summary-close");
+  const resetBtn = document.getElementById("summary-reset");
+  let lastShownRunId = null;
+  let dismissedRunId = null;
+
+  function applyVerdict(verdict) {
+    const v = String(verdict || "").toUpperCase();
+    const el = document.getElementById("summary-verdict");
+    el.classList.remove("succeeded", "crashed", "stalled", "inconclusive");
+    if (v === "SUCCEEDED") el.classList.add("succeeded");
+    else if (v === "CRASHED") el.classList.add("crashed");
+    else if (v === "STALLED") el.classList.add("stalled");
+    else el.classList.add("inconclusive");
+    el.textContent = v || "—";
+  }
+
+  function maybeShow(state) {
+    if (!state || !state.finished) return;
+    const rs = state.run_summary;
+    if (!rs || !rs.summary) return;
+    if (state.run_id && state.run_id === dismissedRunId) return;
+    if (state.run_id && state.run_id === lastShownRunId) return;
+    lastShownRunId = state.run_id || lastShownRunId;
+    applyVerdict(rs.verdict);
+    document.getElementById("summary-body").textContent = rs.summary;
+    document.getElementById("summary-iters").textContent = rs.iterations ?? "—";
+    document.getElementById("summary-tokens").textContent =
+      (rs.tokens || 0).toLocaleString();
+    document.getElementById("summary-tps").textContent = rs.tps ?? "—";
+    document.getElementById("summary-stop").textContent =
+      rs.stop_reason || state.stop_reason || "—";
+    document.getElementById("summary-meta").textContent =
+      `${(state.provider || "?").toUpperCase()} · ${(state.model || "?").toUpperCase()}`;
+    overlay.classList.add("show");
+  }
+  function hide() {
+    overlay.classList.remove("show");
+    dismissedRunId = lastShownRunId;
+  }
+  closeBtn.addEventListener("click", hide);
+  resetBtn.addEventListener("click", function(){
+    hide();
+    const r = document.getElementById("reset-btn");
+    if (r) r.click();
+    // After reset settles, click Play so the new run actually starts.
+    setTimeout(function(){
+      const p = document.getElementById("play-btn");
+      if (p) p.click();
+    }, 250);
+  });
+  overlay.addEventListener("click", function(ev){
+    if (ev.target === overlay) hide();
+  });
+  // Hook into the existing state poll: re-export render() to call us.
+  window.__futureShieldOnState = maybeShow;
+})();
 </script>
 
 </body>

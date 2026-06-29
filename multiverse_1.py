@@ -63,6 +63,9 @@ A good selection should include:
 - any action that could prevent failure fastest
 - any action that resolves weak evidence, delay risk, or irreversible action risk
 
+Scenario context (the live situation — every reason you give must cite its concrete entities):
+{scenario}
+
 Goal:
 {goal}
 
@@ -82,6 +85,10 @@ Question:
 Are the actions collapsable now, or does the system need all selected future
 probes together in this round before a safe collapse can happen?
 
+In every `reason` and `selector_reason` field, refer to concrete nouns from
+the scenario (the asset, person, telemetry, boundary at risk). Do NOT use
+generic phrases like "failure boundary" or "probe window".
+
 Return ONLY JSON, no markdown, no commentary:
 
 {{
@@ -90,10 +97,10 @@ Return ONLY JSON, no markdown, no commentary:
   "rejected_actions": [
     {{
       "action": "<ACTION>",
-      "reason": "<why not worth probing now>"
+      "reason": "<scenario-specific reason this action was not worth probing now>"
     }}
   ],
-  "selector_reason": "<one concise sentence>",
+  "selector_reason": "<one concise scenario-specific sentence on why this batch was picked>",
   "needs_joint_info": <true | false>
 }}
 """
@@ -109,6 +116,9 @@ Important timing rule:
 - Do not reject an action at depth 1 because of risk that appears only after
   a later segment; that later risk belongs to the next control-loop tick.
 
+Scenario context (the live situation — refer to its concrete entities and consequences in your reasoning):
+{scenario}
+
 Goal: {goal}
 Allowed actions: {allowed_actions}
 Probed action: {action}
@@ -122,13 +132,56 @@ Decide one of these outcomes:
   - "stall"   : evidence is too weak to predict, system loses momentum
   - "loop"    : the predicted state repeats an earlier mainline state
 
+The "recap" and "why_points" fields MUST cite concrete nouns/entities from the
+scenario above (e.g. the specific asset, person, telemetry, or boundary at
+risk). DO NOT use generic phrases like "failure boundary", "risk threshold",
+or "probe window". Speak about what actually happens in THIS scenario.
+
 Return ONLY this JSON, no markdown, no commentary:
 
 {{
   "predicted_state": "<one short sentence about the world after probe_depth ticks>",
   "outcome": "safe" | "failure" | "stall" | "loop",
   "reason": "<one short sentence on why>",
+  "recap": "<2-3 sentences explaining, in scenario-specific terms, what happens if this action is taken and why the outcome lands where it does>",
+  "why_points": ["<short bullet 1, scenario-specific, max 10 words>", "<bullet 2>", "<bullet 3>", "<bullet 4>"],
   "confidence": <float 0.0 to 1.0>
+}}
+"""
+
+
+RUN_SUMMARY_PROMPT = """You write the final status report for a Future Shield run.
+
+The system simulated futures across {iterations} iterations and then stopped.
+Stop reason: {stop_reason}
+Last committed action: {last_action}
+Last observed world state: {last_state}
+
+Scenario context (the situation being protected):
+{scenario}
+
+Goal:
+{goal}
+
+Mainline trace (committed actions across the run):
+{mainline_trace}
+
+Decide the verdict for this run from the SCENARIO's point of view:
+  - "SUCCEEDED" : the protected system reached the goal or stayed safe across the run
+  - "CRASHED"   : the protected system entered (or could not avoid) the failure state
+  - "STALLED"   : the system never resolved — no survivor or evidence too weak
+  - "INCONCLUSIVE" : not enough information to call it either way
+
+Then write ONE paragraph of about 100 words (90-110) explaining WHY this happened
+in the concrete terms of the scenario. Cite the actual entities, telemetry, or
+people from the scenario. Do not use generic phrases like "failure boundary" or
+"probe window". Speak about what actually happened to the asset/person/system.
+
+Return ONLY this JSON, no markdown:
+
+{{
+  "verdict": "SUCCEEDED" | "CRASHED" | "STALLED" | "INCONCLUSIVE",
+  "summary": "<one paragraph, ~100 words, scenario-specific, explains the outcome>"
 }}
 """
 
@@ -240,6 +293,8 @@ class MainlineTick:
     timestamp: float
     forks_evaluated: int = 0
     forks_killed: int = 0
+    recap: str = ""
+    why_points: list[str] = field(default_factory=list)
 
 
 TRACKS = ("top", "mid", "bottom")
@@ -256,6 +311,8 @@ class Fork:
     reason: str = ""
     confidence: float = 0.0
     predicted_state: str = ""
+    recap: str = ""
+    why_points: list[str] = field(default_factory=list)
     path: list[str] = field(default_factory=list)
     latest_probe: dict[str, Any] = field(default_factory=dict)
     started_at: float = field(default_factory=time.monotonic)
@@ -272,6 +329,8 @@ class Fork:
             "reason": self.reason,
             "confidence": round(self.confidence, 3),
             "predicted_state": self.predicted_state,
+            "recap": self.recap,
+            "why_points": list(self.why_points),
             "path": list(self.path),
             "latest_probe": dict(self.latest_probe),
         }
@@ -303,6 +362,7 @@ class Multiverse:
         self.running: bool = False
         self.finished: bool = False
         self.stop_reason: str = ""
+        self.run_summary: dict[str, Any] = {}
         self.run_id: str = str(uuid.uuid4())
         self._lock = threading.Lock()
         self._stop_flag = asyncio.Event()
@@ -350,9 +410,12 @@ class Multiverse:
                         "confidence": round(t.confidence, 3),
                         "forks_evaluated": t.forks_evaluated,
                         "forks_killed": t.forks_killed,
+                        "recap": t.recap,
+                        "why_points": list(t.why_points),
                     }
                     for t in self.mainline
                 ],
+                "run_summary": dict(self.run_summary) if self.run_summary else None,
                 "forks": [f.to_dict() for f in self.forks],
                 "events": [e.to_dict() for e in list(self.events)[-32:]],
                 "meter": {
@@ -395,10 +458,20 @@ class Multiverse:
             self.running = False
             self.finished = True
             self._event("commit", f"run complete · reason: {self.stop_reason}")
+            try:
+                self.run_summary = await self._compose_run_summary()
+            except Exception as exc:  # noqa: BLE001
+                self.run_summary = {
+                    "verdict": "INCONCLUSIVE",
+                    "summary": f"could not compose end-of-run summary: {exc}",
+                    "iterations": len(self.mainline) - 1,
+                    "stop_reason": self.stop_reason,
+                }
             append_run_log({
                 "event": "run_finished",
                 "run_id": self.run_id,
                 "stop_reason": self.stop_reason,
+                "run_summary": self.run_summary,
                 "snapshot": self.snapshot(),
             })
 
@@ -458,6 +531,8 @@ class Multiverse:
                 timestamp=time.monotonic(),
                 forks_evaluated=len(new_forks),
                 forks_killed=killed,
+                recap=chosen.recap,
+                why_points=list(chosen.why_points),
             )
             with self._lock:
                 self.mainline.append(commit)
@@ -540,6 +615,7 @@ class Multiverse:
     ) -> None:
         probe_depth = max(1, int(fork.depth or 1))
         prompt = PROBE_PROMPT.format(
+            scenario=self.config.seed_state,
             allowed_actions=", ".join(self.config.allowed_actions),
             goal=self.config.goal,
             action=fork.action,
@@ -576,6 +652,53 @@ class Multiverse:
         if should_log:
             append_run_log(probe_record)
 
+    async def _compose_run_summary(self) -> dict[str, Any]:
+        iterations = max(0, len(self.mainline) - 1)
+        last_state = self.mainline[-1].state if self.mainline else "—"
+        last_action = self.mainline[-1].action if self.mainline else "—"
+        mainline_trace = "\n".join(
+            f"- t{t.index}: action={t.action}, confidence={t.confidence:.2f}, state={t.state[:160]}"
+            for t in self.mainline
+        ) or "(no ticks)"
+        prompt = RUN_SUMMARY_PROMPT.format(
+            scenario=self.config.seed_state,
+            goal=self.config.goal,
+            iterations=iterations,
+            stop_reason=self.stop_reason or "unknown",
+            last_action=last_action,
+            last_state=last_state,
+            mainline_trace=mainline_trace,
+        )
+        result = await call_cerebras(
+            endpoint=self.config.cerebras_endpoint,
+            model=self.config.model,
+            prompt=prompt,
+            timeout=self.config.call_timeout,
+            max_output_tokens=400,
+            temperature=0.3,
+        )
+        raw = result["content"]
+        # account for the tokens this call uses too
+        completion_time = (
+            result["completion_time"] if result["completion_time"] > 0 else 0.0
+        )
+        self.meter.add_exact(
+            result["prompt_tokens"], result["cached_tokens"],
+            result["completion_tokens"],
+            completion_time if completion_time > 0 else 0.001,
+        )
+        packet = parse_any_json(raw)
+        verdict = str(packet.get("verdict", "")).strip().upper() or "INCONCLUSIVE"
+        summary_text = str(packet.get("summary", "")).strip() or raw.strip()
+        return {
+            "verdict": verdict,
+            "summary": summary_text,
+            "iterations": iterations,
+            "stop_reason": self.stop_reason,
+            "tokens": self.meter.fresh_tokens,
+            "tps": round(self.meter.tps, 1),
+        }
+
     def _choose_survivor(self, survivors: list[Fork]) -> Fork:
         continue_survivors = [f for f in survivors if f.action == "CONTINUE"]
         if continue_survivors:
@@ -586,6 +709,7 @@ class Multiverse:
         requested = max(1, min(int(self.config.forks_per_tick), len(self.config.allowed_actions)))
         prompt = SELECTOR_PROMPT.format(
             n=requested,
+            scenario=self.config.seed_state,
             goal=self.config.goal,
             previous_state=previous_state or "none",
             current_state=current.state,
@@ -712,6 +836,14 @@ class Multiverse:
             if predicted:
                 fork.predicted_state = predicted
             fork.confidence = max(fork.confidence, confidence)
+            recap_txt = str((packet or {}).get("recap", "")).strip()
+            if recap_txt:
+                fork.recap = recap_txt
+            raw_pts = (packet or {}).get("why_points") or []
+            if isinstance(raw_pts, list):
+                cleaned = [str(x).strip() for x in raw_pts if str(x).strip()]
+                if cleaned:
+                    fork.why_points = cleaned[:6]
 
             if outcome not in {"safe", "failure", "stall", "loop"}:
                 fork.status = "errored"
@@ -774,6 +906,7 @@ class Multiverse:
         fork: Fork,
     ) -> dict[str, Any]:
         prompt = PROBE_PROMPT.format(
+            scenario=self.config.seed_state,
             allowed_actions=", ".join(self.config.allowed_actions),
             goal=self.config.goal,
             action=action,
