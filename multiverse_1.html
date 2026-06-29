@@ -130,7 +130,8 @@
   .scenario-gen input[type="text"]:focus {
     outline: none; border-color: var(--mint); box-shadow: 0 0 0 2px var(--mint-glow);
   }
-  .scenario-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .scenario-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+  .field > #ctl-state { margin-top: 8px; }
   .scenario-row button {
     padding: 7px 8px; font: 600 12px 'Inter', system-ui, sans-serif;
     letter-spacing: 0.04em; border-radius: 6px; cursor: pointer;
@@ -751,18 +752,16 @@
   </div>
   <div class="field">
     <label>Scenario</label>
-    <textarea id="ctl-state" rows="8" placeholder="Describe the situation the system is observing right now…">embodied autonomous system operating near a danger zone; recent visual frames show a human hand and fragile object near the action boundary; state signals indicate rising proximity risk and delayed intervention risk</textarea>
-    <div class="scenario-gen">
-      <input id="ctl-scenario-seed" type="text" placeholder="seed concept (e.g. rocket flying mid-run to moon)" value="rocket flying mid-run to moon">
-      <div class="scenario-row">
-        <button id="btn-scenario-gen" type="button" class="btn ghost">🎲 Generate</button>
-        <button id="btn-scenario-accept" type="button" class="btn primary">✓ Accept</button>
-      </div>
-      <div id="scenario-status" class="scenario-status"></div>
+    <input id="ctl-scenario-seed" type="text" placeholder="seed concept (e.g. rocket flying mid-run to moon)" value="rocket flying mid-run to moon">
+    <div class="scenario-row">
+      <button id="btn-scenario-gen" type="button" class="btn ghost">🎲 Generate</button>
+      <button id="btn-scenario-accept" type="button" class="btn primary">✓ Accept</button>
     </div>
+    <div id="scenario-status" class="scenario-status"></div>
+    <textarea id="ctl-state" rows="8" placeholder="Click Generate to write a scenario, or describe one here…">embodied autonomous system operating near a danger zone; recent visual frames show a human hand and fragile object near the action boundary; state signals indicate rising proximity risk and delayed intervention risk</textarea>
   </div>
   <div class="field">
-    <label>allowed actions (CSV)</label>
+    <label>allowed actions</label>
     <input id="ctl-actions" type="text" value="CONTINUE,SAFE_STOP,DIVERT_PATH,SLOW_DOWN,OBSERVE_MORE,ESCALATE_TO_HUMAN">
   </div>
   <input id="ctl-provider" type="hidden" value="cerebras">
