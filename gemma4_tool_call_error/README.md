@@ -1,10 +1,12 @@
-# Gemma 4 31B Tool-State Hallucination
+# Gemma 4 Tool-State Hallucination
 
-This folder contains a cross-provider reproduction of an execution-state
-failure in Gemma 4 31B. When a prompt requires external actions but the request
-contains no callable tool schemas, the model can emit tool-shaped text, retain
-that text in conversation history as though it were an executed action, and
-later invent successful results.
+This folder contains cross-provider and direct-checkpoint reproductions of an
+execution-state failure in Gemma 4. The initial finding used Gemma 4 31B; direct
+official-checkpoint tests now reproduce the same unsupported-success behavior
+in Gemma 4 E2B and E4B. When a prompt requires external actions but the request
+contains no callable tool schemas, the model can emit tool-shaped text or move
+straight to a completion claim, retain that generated state in conversation
+history, and later invent successful results.
 
 The controls are equally important: when valid tool schemas are supplied,
 Gemma can return proper structured tool calls. The finding is therefore not
@@ -21,15 +23,27 @@ contradict one another.
 | OpenRouter: OpenInference | Pinned `google/gemma-4-31b-it` route | 5/5 four-turn sessions ended in unsupported success | Structured `write_file` call |
 | OpenRouter: Novita | Pinned `google/gemma-4-31b-it` route | 5/5 four-turn sessions ended in unsupported success; textual tool syntax also reproduced | Structured `write_file` call |
 | AWS direct GPU | Official pinned Google checkpoint, no hosted inference provider or agent harness | 5/5 four-turn sessions claimed files existed and invented a passing three-test transcript | Official parser recognized a structured `write_file` call |
+| Colab direct GPU | Official pinned `google/gemma-4-E2B-it` checkpoint | 10/10 four-turn sessions ended in unsupported success; no files existed | Official parser recognized a structured `write_file` call |
+| Colab direct GPU | Official pinned `google/gemma-4-E4B-it` checkpoint | 10/10 four-turn sessions ended in unsupported success; no files existed | Official parser recognized a structured `write_file` call |
 
-Across the 15 repeated hosted and direct-GPU four-turn sessions summarized
-above, all 15 ended in unsupported completion claims. No tool result existed
+Across the 15 previously reported hosted and direct-GPU 31B four-turn
+sessions, all 15 ended in unsupported completion claims. No tool result existed
 and no requested file was created in those runs.
+
+An additional 20 direct-checkpoint E2B/E4B sessions all ended in unsupported
+completion claims: 10/10 for each model. There were zero schemas, zero
+structured calls, zero tool results, zero external actions, and zero requested
+files across those sessions.
 
 The direct AWS test used the official checkpoint with NF4 weights and BF16
 compute on an NVIDIA A10G. It isolates the behavior from Cerebras, OpenRouter,
 Pi, and Hermes, although a full BF16-weights reproduction remains a useful
 quantization control.
+
+The Colab family test used official E2B and E4B checkpoints with NF4 weights
+and FP16 compute on an NVIDIA T4. It extends the finding beyond 31B and beyond
+any hosted provider. Full-precision or BF16-weight reproductions remain useful
+quantization controls.
 
 ### Hermes harness control
 
@@ -63,7 +77,9 @@ official-checkpoint test removes Hermes entirely.
 5. Valid structured tool calling still works when schemas are actually
    supplied.
 6. The behavior reproduces across independent serving routes and directly from
-   the official checkpoint.
+   official checkpoints.
+7. Direct E2B and E4B results show that the failure is not isolated to the 31B
+   checkpoint.
 
 The evidence does not establish that every prompt fails, that valid tool use is
 generally broken, or that the weights alone are the only contributing layer.
@@ -115,6 +131,8 @@ The runtime contract is what makes unsupported claims non-authoritative.
 | [`openrouter_gemma_tool_call_error.md`](openrouter_gemma_tool_call_error.md) | OpenInference and Novita results |
 | [`aws_reproduce.py`](aws_reproduce.py) | Direct official-checkpoint GPU reproducer |
 | [`aws_gemma_tool_call_error.md`](aws_gemma_tool_call_error.md) | Direct AWS GPU evidence and limitations |
+| [`colab_reproduce.py`](colab_reproduce.py) | Direct E2B/E4B official-checkpoint Colab runner |
+| [`colab_gemma_family_tool_call_error.md`](colab_gemma_family_tool_call_error.md) | E2B/E4B results, controls, revisions, and limitations |
 | [`fixes.md`](fixes.md) | Immediate harness safeguards and regression checklist |
 
 Each provider report contains its exact prompts, captured outputs, reproduction
@@ -158,6 +176,28 @@ python3 aws_reproduce.py \
 
 Each reproducer writes timestamped machine-readable evidence and refuses to
 overwrite an existing output directory.
+
+### Gemma 4 E2B/E4B on Colab
+
+On a 16 GB T4, run the models sequentially:
+
+```bash
+export HF_TOKEN="..."
+
+python3 colab_reproduce.py \
+  --model-id google/gemma-4-E2B-it \
+  --revision 3e22461f65e89153144f8adb70e3b8c2cc9845a7 \
+  --label colab_gemma4_e2b_nf4
+
+python3 colab_reproduce.py \
+  --model-id google/gemma-4-E4B-it \
+  --revision ee0ef6023621cff504d758262d4e04895a5af4a2 \
+  --label colab_gemma4_e4b_nf4
+```
+
+See
+[`colab_gemma_family_tool_call_error.md`](colab_gemma_family_tool_call_error.md#6-reproduce-on-colab)
+for the validated package versions and precision caveat.
 
 ## Minimum acceptance criteria for a fix
 
