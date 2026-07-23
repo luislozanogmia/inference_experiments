@@ -115,6 +115,7 @@ The runtime contract is what makes unsupported claims non-authoritative.
 | [`openrouter_gemma_tool_call_error.md`](openrouter_gemma_tool_call_error.md) | OpenInference and Novita results |
 | [`aws_reproduce.py`](aws_reproduce.py) | Direct official-checkpoint GPU reproducer |
 | [`aws_gemma_tool_call_error.md`](aws_gemma_tool_call_error.md) | Direct AWS GPU evidence and limitations |
+| [`fixes.md`](fixes.md) | Immediate harness safeguards and regression checklist |
 
 Each provider report contains its exact prompts, captured outputs, reproduction
 instructions, limitations, and acceptance criteria. Credentials are read from
